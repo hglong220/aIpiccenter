@@ -10,8 +10,9 @@ if (proxyUrl) {
   }
 }
 
+const GOOGLE_GEMINI_API_VERSION = process.env.GOOGLE_GEMINI_API_VERSION ?? 'v1'
 const GOOGLE_GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL ?? 'gemini-1.5-flash'
-const GOOGLE_GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_GEMINI_MODEL}:generateContent`
+const GOOGLE_GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/${GOOGLE_GEMINI_API_VERSION}/models/${GOOGLE_GEMINI_MODEL}:generateContent`
 const RAPIDAPI_ENDPOINT = 'https://gemini-pro-ai.p.rapidapi.com/'
 
 async function callGoogleGemini(prompt: string) {
