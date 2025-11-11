@@ -14,6 +14,20 @@ const nextConfig = {
   // Performance optimizations
   compress: true,
   poweredByHeader: false,
+  webpack: (config, { isServer }) => {
+    config.resolve = config.resolve || {}
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      canvas: false,
+    }
+
+    if (isServer) {
+      config.externals = config.externals || []
+      config.externals.push({ canvas: 'commonjs canvas' })
+    }
+
+    return config
+  },
 }
 
 module.exports = nextConfig
