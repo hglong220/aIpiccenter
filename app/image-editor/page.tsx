@@ -8,8 +8,8 @@ import type { EditorCanvasHandle } from '@/components/image-editor/EditorCanvas'
 
 const EditorCanvas = dynamic(
   async () => {
-    const module = await import('@/components/image-editor/EditorCanvas')
-    return module.EditorCanvas
+    const mod = await import('@/components/image-editor/EditorCanvas')
+    return mod.EditorCanvas
   },
   { ssr: false }
 )
