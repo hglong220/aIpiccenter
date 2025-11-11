@@ -1,9 +1,18 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Brush, Eraser, Sparkles, ImageIcon, Expand, ArrowLeft, Wand2, Eye, EyeOff } from 'lucide-react'
-import { EditorCanvas, type EditorCanvasHandle } from '@/components/image-editor/EditorCanvas'
+import type { EditorCanvasHandle } from '@/components/image-editor/EditorCanvas'
+
+const EditorCanvas = dynamic(
+  async () => {
+    const module = await import('@/components/image-editor/EditorCanvas')
+    return module.EditorCanvas
+  },
+  { ssr: false }
+)
 
 const editingTools = [
   {
