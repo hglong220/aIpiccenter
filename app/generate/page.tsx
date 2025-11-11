@@ -724,12 +724,6 @@ export default function GenerateLandingPage() {
   }
 
   useEffect(() => {
-    if (!modelMenuOpen) {
-      setHoveredModel(null)
-    }
-  }, [modelMenuOpen])
-
-  useEffect(() => {
     if (!navExpanded) {
       setUserMenuOpen(false)
     }
