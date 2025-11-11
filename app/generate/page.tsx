@@ -29,8 +29,9 @@ import {
   LogOut,
   Smartphone,
   Shield,
+  type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -147,7 +148,18 @@ const planLabels: Record<string, string> = {
   enterprise: '企业版',
 }
 
-const sidebarIcons = [
+type SidebarItem = {
+  icon: LucideIcon
+  label: string
+  expandedLabel?: string
+  href?: string
+  action?: 'search' | 'history'
+  hideIconWhenExpanded?: boolean
+  collapsedIcon?: ReactNode
+  nonInteractive?: boolean
+}
+
+const sidebarIcons: SidebarItem[] = [
   {
     icon: Home,
     label: '首页',
