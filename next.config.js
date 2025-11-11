@@ -15,6 +15,13 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   webpack: (config, { isServer }) => {
+    config.module = config.module || {}
+    config.module.rules = config.module.rules || []
+    config.module.rules.push({
+      test: /\.page\.tsx?$/,
+      loader: 'next/dist/build/webpack/loaders/null-loader',
+    })
+
     config.resolve = config.resolve || {}
     config.resolve.fallback = {
       ...config.resolve.fallback,
