@@ -10,12 +10,49 @@ if (proxyUrl) {
   }
 }
 
+type ChatMessagePayload = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 const GOOGLE_GEMINI_API_VERSION = process.env.GOOGLE_GEMINI_API_VERSION ?? 'v1'
 const GOOGLE_GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL ?? 'gemini-1.5-flash'
 const GOOGLE_GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/${GOOGLE_GEMINI_API_VERSION}/models/${GOOGLE_GEMINI_MODEL}:generateContent`
 const RAPIDAPI_ENDPOINT = 'https://gemini-pro-ai.p.rapidapi.com/'
 
-async function callGoogleGemini(prompt: string) {
+function toGeminiContents(messages: ChatMessagePayload[]) {
+  return messages.map((message) => ({
+    role: message.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: message.content }],
+  }))
+}
+
+function normalizeMessages(input: unknown): ChatMessagePayload[] {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null
+      }
+
+      const rawRole = (item as { role?: unknown }).role
+      const role: ChatMessagePayload['role'] = rawRole === 'assistant' ? 'assistant' : 'user'
+      const contentValue = (item as { content?: unknown }).content
+      const content = typeof contentValue === 'string' ? contentValue.trim() : ''
+
+      if (!content) {
+        return null
+      }
+
+      return { role, content }
+    })
+    .filter((message): message is ChatMessagePayload => Boolean(message))
+}
+
+async function callGoogleGemini(messages: ChatMessagePayload[]) {
   if (!process.env.GOOGLE_GEMINI_API_KEY) {
     return null
   }
@@ -27,11 +64,7 @@ async function callGoogleGemini(prompt: string) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
-          },
-        ],
+        contents: toGeminiContents(messages),
       }),
     })
 
@@ -65,7 +98,7 @@ async function callGoogleGemini(prompt: string) {
   }
 }
 
-async function callRapidGemini(prompt: string) {
+async function callRapidGemini(messages: ChatMessagePayload[]) {
   if (!process.env.RAPIDAPI_GEMINI_KEY || !process.env.RAPIDAPI_GEMINI_HOST) {
     return null
   }
@@ -78,12 +111,7 @@ async function callRapidGemini(prompt: string) {
       'x-rapidapi-key': process.env.RAPIDAPI_GEMINI_KEY,
     },
     body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: prompt }],
-        },
-      ],
+      contents: toGeminiContents(messages),
     }),
   })
 
@@ -113,13 +141,25 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null)
 
-    if (!body || typeof body.prompt !== 'string' || !body.prompt.trim()) {
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: '请求格式错误。' }, { status: 400 })
+    }
+
+    const prompt = typeof (body as { prompt?: unknown }).prompt === 'string' ? (body as { prompt?: string }).prompt.trim() : ''
+    const inputMessages = normalizeMessages((body as { messages?: unknown }).messages)
+
+    const conversation: ChatMessagePayload[] =
+      inputMessages.length > 0
+        ? inputMessages
+        : prompt
+          ? [{ role: 'user', content: prompt }]
+          : []
+
+    if (!conversation.length) {
       return NextResponse.json({ error: '请输入提示词。' }, { status: 400 })
     }
 
-    const prompt = body.prompt.trim()
-
-    const googleResult = await callGoogleGemini(prompt)
+    const googleResult = await callGoogleGemini(conversation)
     if (googleResult) {
       if (!googleResult.ok) {
         return NextResponse.json({ error: googleResult.error }, { status: googleResult.status })
@@ -132,7 +172,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const rapidResult = await callRapidGemini(prompt)
+    const rapidResult = await callRapidGemini(conversation)
     if (rapidResult) {
       if (!rapidResult.ok) {
         if (rapidResult.status === 429) {
