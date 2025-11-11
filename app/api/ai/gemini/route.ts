@@ -1,4 +1,14 @@
 import { NextResponse } from 'next/server'
+import { ProxyAgent, setGlobalDispatcher } from 'undici'
+
+const proxyUrl = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY
+if (proxyUrl) {
+  try {
+    setGlobalDispatcher(new ProxyAgent(proxyUrl))
+  } catch (error) {
+    console.warn('Failed to configure HTTP proxy agent:', error)
+  }
+}
 
 const GOOGLE_GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL ?? 'gemini-1.5-flash'
 const GOOGLE_GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_GEMINI_MODEL}:generateContent`
