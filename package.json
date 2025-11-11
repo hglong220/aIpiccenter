@@ -17,8 +17,6 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@prisma/client": "6.19.0",
-    "@stagewise/toolbar": "file:..\\stagewise-tar\\toolbar-0.6.3.tgz",
-    "@stagewise/toolbar-react": "file:..\\stagewise-tar\\package\\stagewise-toolbar-react-0.6.3.tgz",
     "bcryptjs": "^3.0.3",
     "framer-motion": "^11.3.0",
     "jsonwebtoken": "^9.0.2",
