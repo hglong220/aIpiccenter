@@ -6,6 +6,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { fetch, ProxyAgent } from 'undici';
 import type { 
   ImageGenerationRequest, 
   ImageGenerationResult,
@@ -85,55 +86,144 @@ Return only the enhanced prompt, nothing else.
 }
 
 /**
- * Generate image using Gemini API
+ * Get proxy agent for API requests
+ * Supports GCP proxy or other HTTP/HTTPS proxies
+ */
+function getProxyAgent(): ProxyAgent | undefined {
+  const proxyUrl =
+    process.env.GEMINI_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    null
+
+  if (!proxyUrl) {
+    return undefined
+  }
+
+  try {
+    const agent = new ProxyAgent(proxyUrl)
+    console.info('[Gemini] Proxy agent created for image generation:', proxyUrl)
+    return agent
+  } catch (error) {
+    console.error('[Gemini] Failed to create proxy agent:', error)
+    return undefined
+  }
+}
+
+/**
+ * Generate image using Google AI Studio API
  * 
- * Note: This is a placeholder implementation. 
- * Replace with actual Gemini image generation API calls when available.
+ * This function integrates with Google AI Studio API for image generation.
+ * Configure the API endpoint and authentication in environment variables:
+ * - GOOGLE_AI_STUDIO_API_KEY: Your Google AI Studio API key
+ * - GOOGLE_AI_STUDIO_API_URL: API endpoint URL (optional, defaults to official endpoint)
+ * - HTTPS_PROXY or GEMINI_PROXY_URL: Proxy URL for accessing API (e.g., http://34.66.134.109:3128)
  */
 export async function generateImage(
   request: ImageGenerationRequest,
   onProgress?: (progress: GenerationProgress) => void
 ): Promise<ImageGenerationResult> {
   try {
-    // Simulate progress updates
+    // Get API key from environment variables
+    const apiKey = process.env.GOOGLE_AI_STUDIO_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    
+    if (!apiKey || apiKey === 'your-gemini-api-key') {
+      throw new Error('Google AI Studio API key is not configured');
+    }
+
+    // Progress: Initializing
     onProgress?.({
       status: 'generating',
       progress: 0,
       message: 'Initializing generation...'
     });
 
-    // TODO: Replace with actual Gemini image generation API
-    // For now, this is a mock implementation
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Get proxy configuration
+    const proxyUrl = process.env.GEMINI_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+    if (proxyUrl) {
+      console.info('[Gemini] Using proxy for image generation:', proxyUrl);
+    } else {
+      console.warn('[Gemini] No proxy configured - direct connection may fail if network is blocked');
+    }
+
+    // TODO: Replace the following with your actual Google AI Studio API implementation
+    // Example implementation (adjust based on actual API documentation):
+    
+    const apiUrl = process.env.GOOGLE_AI_STUDIO_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict';
     
     onProgress?.({
       status: 'generating',
-      progress: 30,
+      progress: 20,
       message: 'Processing your prompt...'
     });
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    // Prepare request payload (adjust based on actual API requirements)
+    const requestBody = {
+      prompt: request.prompt,
+      negativePrompt: request.negativePrompt,
+      width: request.width,
+      height: request.height,
+      // Add other parameters as required by Google AI Studio API
+    };
+
+    // Get proxy agent if configured
+    const proxyAgent = getProxyAgent();
+
+    // Prepare fetch options with proxy support
+    const fetchOptions: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+      dispatcher?: ProxyAgent;
+    } = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`, // Adjust authentication method if different
+        // Or use: 'X-API-Key': apiKey, if API key goes in header
+      },
+      body: JSON.stringify(requestBody),
+    };
+
+    // Add proxy dispatcher if available
+    if (proxyAgent) {
+      fetchOptions.dispatcher = proxyAgent;
+    }
+
+    // Make API call using undici fetch (supports proxy)
+    const response = await fetch(apiUrl, fetchOptions);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `API request failed with status ${response.status}`);
+    }
+
     onProgress?.({
       status: 'generating',
       progress: 60,
       message: 'Generating image...'
     });
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const apiResponse = await response.json();
     
+    // Extract image URL from API response (adjust based on actual response structure)
+    // Example: const imageUrl = apiResponse.imageUrl || apiResponse.data?.imageUrl || apiResponse.images?.[0]?.url;
+    const imageUrl = apiResponse.imageUrl || apiResponse.data?.imageUrl || apiResponse.images?.[0]?.url;
+    
+    if (!imageUrl) {
+      throw new Error('No image URL returned from API');
+    }
+
     onProgress?.({
       status: 'generating',
       progress: 90,
       message: 'Finalizing...'
     });
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Mock result - Replace with actual API response
+    // Construct result
     const result: ImageGenerationResult = {
-      id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      imageUrl: `https://picsum.photos/seed/${Date.now()}/${request.width}/${request.height}`,
+      id: apiResponse.id || `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      imageUrl: imageUrl,
       prompt: request.prompt,
       negativePrompt: request.negativePrompt,
       width: request.width,
@@ -150,6 +240,7 @@ export async function generateImage(
     return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error generating image with Google AI Studio API:', error);
     onProgress?.({
       status: 'error',
       progress: 0,

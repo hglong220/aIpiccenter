@@ -72,33 +72,16 @@ export default function CreateTestUserPage() {
           <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fff', borderRadius: '4px' }}>
             <h3>⚠️ 重要提示：</h3>
             <ol style={{ paddingLeft: '1.5rem' }}>
-              <li>登录时需要使用验证码</li>
-              <li>验证码会在控制台输出（开发环境）</li>
-              <li>访问 <a href="/auth" style={{ color: '#0070f3' }}>/auth</a> 进行登录</li>
-              <li>输入手机号，点击"发送验证码"</li>
-              <li>在终端查看验证码并输入</li>
+              <li>登录时使用手机号接收验证码，无需输入密码</li>
+              <li>验证码会在终端输出（开发环境）</li>
+              <li>访问 <a href="/" style={{ color: '#0070f3' }}>/</a> 完成登录</li>
+              <li>输入手机号，点击“获取验证码”提交登录</li>
             </ol>
-          </div>
-
-          <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
-            <h3>💡 快速登录（通过浏览器控制台）：</h3>
-            <p>打开浏览器控制台（F12），执行以下代码：</p>
-            <pre style={{ 
-              padding: '0.5rem', 
-              backgroundColor: '#fff', 
-              borderRadius: '4px',
-              overflow: 'auto',
-              fontSize: '0.875rem',
-            }}>
-{`localStorage.setItem('auth_token', '${result.token}');
-localStorage.setItem('auth_user', JSON.stringify(${JSON.stringify(result.user)}));
-location.reload();`}
-            </pre>
           </div>
 
           <div style={{ marginTop: '1rem' }}>
             <a
-              href="/auth"
+              href="/"
               style={{
                 display: 'inline-block',
                 padding: '0.75rem 1.5rem',

@@ -18,40 +18,34 @@ import {
   HelpCircle,
   CreditCard,
   ChevronRight,
+  Mic,
   UploadCloud,
   Clock,
   Tag,
   Star,
   X,
+  Play,
   Send,
   LogOut,
   Smartphone,
   Shield,
-  type LucideIcon,
 } from 'lucide-react'
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
-type ChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  source?: 'google' | 'rapidapi'
+type ModelOption = '自动模式' | '快速模式' | '专家模式' | '图片' | '视频'
+
+type AspectOption = {
+  id: 'portrait' | 'landscape' | 'square'
+  label: string
 }
 
-const createMessageId = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+const aspectOptions: AspectOption[] = [
+  { id: 'portrait', label: '竖屏' },
+  { id: 'landscape', label: '横屏' },
+  { id: 'square', label: '方形' },
+]
 
 type StaticViewConfig = {
   title: string
@@ -153,18 +147,7 @@ const planLabels: Record<string, string> = {
   enterprise: '企业版',
 }
 
-type SidebarItem = {
-  icon: LucideIcon
-  label: string
-  expandedLabel?: string
-  href?: string
-  action?: 'search' | 'history'
-  hideIconWhenExpanded?: boolean
-  collapsedIcon?: ReactNode
-  nonInteractive?: boolean
-}
-
-const sidebarIcons: SidebarItem[] = [
+const sidebarIcons = [
   {
     icon: Home,
     label: '首页',
@@ -258,12 +241,19 @@ const flatSearchItems = searchGroups.flatMap((group) =>
 export default function GenerateLandingPage() {
   const searchParams = useSearchParams()
   const view = searchParams.get('view') ?? 'chat'
+  const isImageView = view === 'image'
+  const isVideoView = view === 'video'
   const staticView = staticViewConfigs[view]
   const router = useRouter()
-  const { user, logout, loading } = useAuth()
+  const { user, logout } = useAuth()
 
   const [prompt, setPrompt] = useState('')
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(isImageView ? '图片' : isVideoView ? '视频' : '专家模式')
+  const [selectedAspect, setSelectedAspect] = useState<AspectOption['id']>('portrait')
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [hoveredModel, setHoveredModel] = useState<ModelOption | null>(null)
   const [hoveredSidebarIndex, setHoveredSidebarIndex] = useState<number | null>(null)
+  const [isHoveringCreate, setIsHoveringCreate] = useState(false)
   const [navExpanded, setNavExpanded] = useState(false)
   const [historyExpanded, setHistoryExpanded] = useState(false)
   const [activeHistoryId, setActiveHistoryId] = useState('')
@@ -280,10 +270,30 @@ export default function GenerateLandingPage() {
   const [geminiError, setGeminiError] = useState<string | null>(null)
   const [geminiLoading, setGeminiLoading] = useState(false)
   const [geminiSource, setGeminiSource] = useState<string | null>(null)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatLoading, setChatLoading] = useState(false)
-  const [chatError, setChatError] = useState<string | null>(null)
+  
+  // 聊天功能相关状态
+  type ChatMessage = {
+    id: string
+    sender: 'user' | 'assistant'
+    text: string
+    timestamp: string
+    status: 'sending' | 'sent' | 'failed'
+  }
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      sender: 'assistant',
+      text: '你好，我是 Grok 聊天助手，很高兴为你提供帮助。',
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+    },
+  ])
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const isChatView = view === 'chat'
+  
+  const modelOptions: ModelOption[] = isImageView ? ['图片'] : isVideoView ? ['视频'] : ['自动模式', '快速模式', '专家模式']
+  const modelMenuRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const isGeminiTest = view === 'gemini-test'
@@ -310,12 +320,6 @@ export default function GenerateLandingPage() {
     })
   }, [filteredSearchItems])
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/')
-    }
-  }, [loading, user, router])
-
   const previewSearchItem = useMemo(() => {
     if (hoveredSearchId) {
       return flatSearchItems.find((item) => item.id === hoveredSearchId) || null
@@ -337,6 +341,30 @@ export default function GenerateLandingPage() {
       return () => window.clearTimeout(timer)
     }
   }, [navExpanded])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+        setModelMenuOpen(false)
+        setHoveredModel(null)
+      }
+    }
+
+    if (modelMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [modelMenuOpen])
+
+  useEffect(() => {
+    setSelectedModel(isImageView ? '图片' : isVideoView ? '视频' : '专家模式')
+    if (isImageView || isVideoView) {
+      setSelectedAspect('portrait')
+    }
+  }, [isImageView, isVideoView])
 
   const renderStaticView = (config: StaticViewConfig) => (
     <div
@@ -724,6 +752,12 @@ export default function GenerateLandingPage() {
   }
 
   useEffect(() => {
+    if (!modelMenuOpen) {
+      setHoveredModel(null)
+    }
+  }, [modelMenuOpen])
+
+  useEffect(() => {
     if (!navExpanded) {
       setUserMenuOpen(false)
     }
@@ -786,12 +820,6 @@ export default function GenerateLandingPage() {
     }
   }, [navExpanded])
 
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
-    }
-  }, [chatMessages, chatLoading])
-
   const handleSubmitGemini = async () => {
     if (!geminiPrompt.trim() || geminiLoading) {
       return
@@ -832,73 +860,328 @@ export default function GenerateLandingPage() {
     }
   }
 
-  const handleSendChat = useCallback(async () => {
+  // 聊天消息发送处理函数
+  const handleSendMessage = async () => {
+    if (!isChatView) {
+      return
+    }
     const trimmed = prompt.trim()
-    if (!trimmed || chatLoading) {
+    if (!trimmed || isSendingMessage) {
       return
     }
 
+    const timestamp = new Date().toISOString()
     const userMessage: ChatMessage = {
-      id: createMessageId(),
-      role: 'user',
-      content: trimmed,
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: trimmed,
+      timestamp,
+      status: 'sent',
     }
 
-    const conversationPayload = [...chatMessages, userMessage].map((message) => ({
-      role: message.role,
-      content: message.content,
-    }))
+    const placeholderId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const placeholderMessage: ChatMessage = {
+      id: placeholderId,
+      sender: 'assistant',
+      text: selectedModel === '专家模式' ? '专家模式思考中…' : '正在思考…',
+      timestamp,
+      status: 'sending',
+    }
 
-    setChatMessages((prev) => [...prev, userMessage])
+    // 构建对话上下文
+    const conversationSnapshot = [...chatMessages, userMessage]
+      .filter((message) => message.sender !== 'system')
+      .map((message) => `${message.sender === 'user' ? '用户' : 'Grok'}：${message.text}`)
+      .join('\n')
+
+    setChatMessages((prev) => [...prev, userMessage, placeholderMessage])
     setPrompt('')
-    setChatError(null)
-    setChatLoading(true)
+    setIsSendingMessage(true)
 
     try {
       const response = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversationPayload }),
+        body: JSON.stringify({
+          prompt:
+            (selectedModel === '专家模式'
+              ? '你现在处于专家模式，请用严谨、专业的方式回答。以下是当前对话：\n'
+              : '请以友好、易懂的方式回答用户。以下是当前对话：\n') + conversationSnapshot,
+        }),
       })
 
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        const message =
-          (typeof data?.error === 'string' && data.error.trim()) || '调用失败，请稍后再试。'
-        setChatError(message)
+        const errorMessage = (data as { error?: string })?.error || '服务暂时不可用，请稍后重试。'
+        setChatMessages((prev) =>
+          prev.map((message) =>
+            message.id === placeholderId
+              ? {
+                  ...message,
+                  text: errorMessage,
+                  status: 'failed',
+                  timestamp: new Date().toISOString(),
+                }
+              : message,
+          ),
+        )
         return
       }
 
-      const text =
-        (typeof data?.text === 'string' && data.text.trim()) || '（无内容）'
-      const sourceValue = typeof data?.source === 'string' ? data.source : undefined
-
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: createMessageId(),
-          role: 'assistant',
-          content: text,
-          source: sourceValue === 'google' || sourceValue === 'rapidapi' ? sourceValue : undefined,
-        },
-      ])
+      const replyText = (data as { text?: string })?.text?.trim()
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId
+            ? {
+                ...message,
+                text: replyText && replyText.length > 0 ? replyText : '（未获取到回复内容）',
+                status: 'sent',
+                timestamp: new Date().toISOString(),
+              }
+            : message,
+        ),
+      )
     } catch (error) {
-      console.error('调用 Gemini 失败:', error)
-      setChatError('网络异常，请稍后再试。')
+      console.error('发送消息失败', error)
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId
+            ? {
+                ...message,
+                text: '发送失败，请检查网络后重试。',
+                status: 'failed',
+                timestamp: new Date().toISOString(),
+              }
+            : message,
+        ),
+      )
     } finally {
-      setChatLoading(false)
+      setIsSendingMessage(false)
     }
-  }, [prompt, chatLoading, chatMessages])
+  }
 
-  const handlePromptKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault()
-        handleSendChat()
-      }
-    },
-    [handleSendChat]
+  // 自动滚动到底部
+  useEffect(() => {
+    if (isChatView && chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  }, [chatMessages, isChatView])
+
+  // 渲染聊天视图
+  const renderChatView = () => (
+    <>
+      <div
+        ref={chatContainerRef}
+        className="chat-messages-container"
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: '800px',
+          margin: '0 auto',
+          padding: '24px 28px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '18px',
+          minHeight: 0,
+          height: '100%',
+        }}
+      >
+        {chatMessages.map((message) => {
+          const isUser = message.sender === 'user'
+          const bubbleColor = isUser ? '#2D72FF' : '#FFFFFF'
+          const textColor = isUser ? '#FFFFFF' : '#111827'
+          return (
+            <div
+              key={message.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                alignItems: isUser ? 'flex-end' : 'flex-start',
+                flexDirection: 'column',
+                gap: '6px',
+                marginLeft: isUser ? '-113px' : '0',
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: '72%',
+                  padding: '12px 18px',
+                  borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                  backgroundColor: 'transparent',
+                  color: '#111827',
+                  fontSize: '14px',
+                  lineHeight: 1.7,
+                  boxShadow: 'none',
+                  border: 'none',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {message.text}
+              </div>
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: '#9CA3AF',
+                  textAlign: 'left',
+                  padding: '0 0 0 6px',
+                }}
+              >
+                {message.status === 'sending'
+                  ? 'Grok 正在思考…'
+                  : new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                {message.status === 'failed' ? ' · 发送失败' : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ height: '24px', width: '100%', flexShrink: 0 }} />
+      <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', flexShrink: 0, paddingBottom: '24px' }}>
+        <div
+          style={{
+            borderRadius: '26px',
+            border: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '11px 16px',
+            gap: '12px',
+            background: '#ffffff',
+            boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <button
+            title="上传文件"
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '20px',
+              border: 'none',
+              backgroundColor: '#F3F4F6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#1F2937',
+              cursor: 'pointer',
+            }}
+          >
+            <UploadCloud style={{ width: '20px', height: '20px' }} />
+          </button>
+          <input
+            type="text"
+            placeholder="How can Grok help?"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                void handleSendMessage()
+              }
+            }}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: '16px',
+              color: '#111827',
+            }}
+          />
+          <button
+            onClick={() => void handleSendMessage()}
+            disabled={!prompt.trim() || isSendingMessage}
+            title="发送消息"
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '18px',
+              border: 'none',
+              backgroundColor: '#F3F4F6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#1F2937',
+              cursor: !prompt.trim() || isSendingMessage ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Send style={{ width: '18px', height: '18px' }} />
+          </button>
+          <div style={{ position: 'relative' }} ref={modelMenuRef}>
+            <button
+              onClick={() => setModelMenuOpen((prev) => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '6px 12px',
+                background: '#ffffff',
+                color: '#111827',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {selectedModel}
+              <ChevronRight style={{ width: '14px', height: '14px' }} />
+            </button>
+            {modelMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 8px)',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  padding: '12px',
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  boxShadow: '0 16px 32px rgba(15, 23, 42, 0.12)',
+                  minWidth: '140px',
+                  zIndex: 10,
+                }}
+              >
+                {modelOptions
+                  .filter((option) => option !== selectedModel)
+                  .map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        setSelectedModel(option)
+                        setModelMenuOpen(false)
+                      }}
+                      onMouseEnter={() => setHoveredModel(option)}
+                      onMouseLeave={() => setHoveredModel(null)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid transparent',
+                        background: hoveredModel === option ? '#f3f4f6' : 'transparent',
+                        color: '#111827',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        textAlign: 'left',
+                        transition: 'background 0.15s ease',
+                      }}
+                    >
+                      {option}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
   )
 
   const renderGeminiTestView = () => (
@@ -1045,67 +1328,13 @@ export default function GenerateLandingPage() {
     </div>
   )
 
-  if (loading) {
-    return (
-      <main
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#ffffff',
-        }}
-      >
-        <span style={{ fontSize: '14px', color: '#6b7280' }}>正在加载账户信息…</span>
-      </main>
-    )
-  }
-
-  if (!user) {
-    return (
-      <main
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#ffffff',
-          padding: '32px',
-        }}
-      >
-        <div
-          style={{
-            padding: '36px 44px',
-            borderRadius: '18px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 24px 48px rgba(15, 23, 42, 0.12)',
-            backgroundColor: '#ffffff',
-            textAlign: 'center',
-          }}
-        >
-          <p style={{ fontSize: '16px', color: '#111827', marginBottom: '16px' }}>请先登录以访问控制台。</p>
-          <Link
-            href="/"
-            style={{
-              fontSize: '14px',
-              color: '#1A73E8',
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
-          >
-            返回首页
-          </Link>
-        </div>
-      </main>
-    )
-  }
-
   return (
     <main
       style={{
         display: 'flex',
-        minHeight: '100vh',
+        height: '100vh',
         backgroundColor: '#ffffff',
+        overflow: 'hidden',
       }}
     >
       <aside
@@ -1124,6 +1353,7 @@ export default function GenerateLandingPage() {
         }}
         style={{
           width: navExpanded ? '240px' : '64px',
+          height: '100%',
           borderRight: '1px solid #f0f0f0',
           display: 'flex',
           flexDirection: 'column',
@@ -1136,6 +1366,7 @@ export default function GenerateLandingPage() {
           WebkitUserSelect: 'none',
           MozUserSelect: 'none',
           msUserSelect: 'none',
+          flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: navExpanded ? '12px' : '16px', alignItems: navExpanded ? 'stretch' : 'center', paddingTop: navExpanded ? '0' : '20px' }}>
@@ -1836,162 +2067,228 @@ export default function GenerateLandingPage() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: '48px 0',
+          padding: isChatView ? '0' : '48px 0',
           width: '100%',
+          height: '100%',
+          overflow: isChatView ? 'hidden' : 'visible',
+          minHeight: 0,
         }}
       >
         {view === 'settings' ? (
           renderSettingsView()
         ) : isGeminiTest ? (
           renderGeminiTestView()
+        ) : isChatView ? (
+          renderChatView()
         ) : staticView ? (
           renderStaticView(staticView)
         ) : (
-          <div style={{ width: '100%', maxWidth: '780px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div
-              ref={chatContainerRef}
-              style={{
-                flex: 1,
-                maxHeight: '520px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '18px',
-                padding: '24px',
-                backgroundColor: '#ffffff',
-                overflowY: 'auto',
-                boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
-              }}
-            >
-              {chatMessages.length === 0 ? (
-                <div style={{ fontSize: '14px', color: '#9ca3af', textAlign: 'center' }}>
-                  开始新的对话吧，问我任何问题。
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  {chatMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: message.role === 'user' ? 'flex-end' : 'flex-start',
-                        gap: '6px',
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: '85%',
-                          borderRadius: '18px',
-                          padding: '12px 16px',
-                          backgroundColor: message.role === 'user' ? '#111827' : '#F3F4F6',
-                          color: message.role === 'user' ? '#ffffff' : '#111827',
-                          fontSize: '14px',
-                          lineHeight: 1.6,
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >
-                        {message.content}
-                      </div>
-                      {message.source && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            color: '#9ca3af',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.08em',
-                          }}
-                        >
-                          {message.source === 'google' ? 'Google Gemini' : 'RapidAPI Proxy'}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                  {chatLoading && (
-                    <div style={{ fontSize: '13px', color: '#9ca3af' }}>助手正在思考...</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {chatError && (
+          <>
+            <div style={{ flex: 1, width: '100%' }} />
+            <div style={{ width: '100%', maxWidth: '780px' }}>
               <div
                 style={{
-                  fontSize: '13px',
-                  color: '#dc2626',
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  backgroundColor: '#fee2e2',
-                  border: '1px solid #fecaca',
+                  borderRadius: '26px',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '11px 16px',
+                  gap: '12px',
+                  background: '#ffffff',
+                  boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
                 }}
               >
-                {chatError}
+                <button
+                  title="上传文件"
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '20px',
+                    border: 'none',
+                    backgroundColor: '#F3F4F6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#1F2937',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <UploadCloud style={{ width: '20px', height: '20px' }} />
+                </button>
+                <input
+                  type="text"
+                  placeholder="How can Grok help?"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    outline: 'none',
+                    fontSize: '16px',
+                    color: '#111827',
+                  }}
+                />
+                <button
+                  title={isImageView || isVideoView ? '发送' : '语音输入'}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '18px',
+                    border: 'none',
+                    backgroundColor: '#F3F4F6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#1F2937',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isImageView || isVideoView ? (
+                    <Send style={{ width: '18px', height: '18px' }} />
+                  ) : (
+                    <Mic style={{ width: '18px', height: '18px' }} />
+                  )}
+                </button>
+                <div style={{ position: 'relative' }} ref={modelMenuRef}>
+                  <button
+                    onClick={() => setModelMenuOpen((prev) => !prev)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: isImageView || isVideoView ? '8px' : '6px',
+                      border: 'none',
+                      borderRadius: '999px',
+                      padding: isImageView || isVideoView ? '6px 14px' : '6px 12px',
+                      background: '#ffffff',
+                      color: '#111827',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    {isVideoView || isImageView ? (
+                      <>
+                        {isVideoView ? (
+                          <Play style={{ width: '16px', height: '16px' }} />
+                        ) : (
+                          <Images style={{ width: '16px', height: '16px' }} />
+                        )}
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{isVideoView ? '视频' : '图片'}</span>
+                        <ChevronRight
+                          style={{
+                            width: '14px',
+                            height: '14px',
+                            transform: modelMenuOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s ease',
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {selectedModel}
+                        <ChevronRight style={{ width: '14px', height: '14px' }} />
+                      </>
+                    )}
+                  </button>
+                  {modelMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 'calc(100% + 8px)',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        padding: isImageView || isVideoView ? '8px 8px' : '12px',
+                        background: '#ffffff',
+                        borderRadius: '12px',
+                        boxShadow: '0 16px 32px rgba(15, 23, 42, 0.12)',
+                        minWidth: isImageView || isVideoView ? '130px' : '140px',
+                        minHeight: isImageView || isVideoView ? '84px' : undefined,
+                        zIndex: 10,
+                      }}
+                    >
+                      {isVideoView || isImageView ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#4b5563', textAlign: 'center', marginBottom: '2px' }}>宽高比</span>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '2px' }}>
+                            {aspectOptions.map((option) => {
+                              const isActive = selectedAspect === option.id
+                              const shape =
+                                option.id === 'portrait'
+                                  ? { width: 14, height: 20 }
+                                  : option.id === 'landscape'
+                                    ? { width: 20, height: 14 }
+                                    : { width: 18, height: 18 }
+                              return (
+                                <button
+                                  key={option.id}
+                                  onClick={() => setSelectedAspect(option.id)}
+                                  style={{
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '8px',
+                                    border: isActive ? '1px solid #111827' : '1px solid #d1d5db',
+                                    backgroundColor: isActive ? '#f3f4f6' : '#ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      display: 'block',
+                                      width: `${shape.width}px`,
+                                      height: `${shape.height}px`,
+                                      borderRadius: '4px',
+                                      border: isActive ? 'none' : '1px solid #9ca3af',
+                                      backgroundColor: isActive ? '#111827' : '#ffffff',
+                                    }}
+                                  />
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        modelOptions
+                          .filter((option) => option !== selectedModel)
+                          .map((option) => (
+                            <button
+                              key={option}
+                              onClick={() => {
+                                setSelectedModel(option)
+                                setModelMenuOpen(false)
+                              }}
+                              onMouseEnter={() => setHoveredModel(option)}
+                              onMouseLeave={() => setHoveredModel(null)}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid transparent',
+                                background: hoveredModel === option ? '#f3f4f6' : 'transparent',
+                                color: '#111827',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                fontWeight: 500,
+                                textAlign: 'left',
+                                transition: 'background 0.15s ease',
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-
-            <div
-              style={{
-                borderRadius: '26px',
-                border: '1px solid #e5e7eb',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '11px 16px',
-                gap: '12px',
-                background: '#ffffff',
-                boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
-              }}
-            >
-              <button
-                title="上传文件"
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '20px',
-                  border: 'none',
-                  backgroundColor: '#F3F4F6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#1F2937',
-                  cursor: 'pointer',
-                }}
-              >
-                <UploadCloud style={{ width: '20px', height: '20px' }} />
-              </button>
-              <input
-                type="text"
-                placeholder="输入内容，按 Enter 发送"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={handlePromptKeyDown}
-                style={{
-                  flex: 1,
-                  border: 'none',
-                  outline: 'none',
-                  fontSize: '16px',
-                  color: '#111827',
-                }}
-              />
-              <button
-                title="发送"
-                onClick={handleSendChat}
-                disabled={chatLoading || !prompt.trim()}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '18px',
-                  border: 'none',
-                  backgroundColor: chatLoading || !prompt.trim() ? '#E5E7EB' : '#111827',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: chatLoading || !prompt.trim() ? '#9CA3AF' : '#FFFFFF',
-                  cursor: chatLoading || !prompt.trim() ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.2s ease',
-                }}
-              >
-                <Send style={{ width: '18px', height: '18px' }} />
-              </button>
             </div>
-          </div>
+          </>
         )}
       </section>
     </main>

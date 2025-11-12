@@ -16,7 +16,7 @@ import { CreditCard, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 export default function PaymentPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [payUrl, setPayUrl] = useState<string | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
@@ -29,9 +29,9 @@ export default function PaymentPage() {
 
   // 检查用户是否登录并创建订单
   useEffect(() => {
-    if (!user || !token) {
+    if (!user) {
       toast.error('请先登录')
-      router.push('/auth?redirect=/payment')
+      router.push('/?redirect=/payment')
       return
     }
 
@@ -43,13 +43,13 @@ export default function PaymentPage() {
     }
 
     // 创建订单
-    createOrder()
+    void createOrder()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 创建订单
   const createOrder = async () => {
-    if (!user || !token || !planId || !planName || !price || !credits) return
+    if (!user || !planId || !planName || !price || !credits) return
 
     setLoading(true)
 
@@ -58,19 +58,19 @@ export default function PaymentPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           planId,
           planName,
           amount: parseFloat(price),
-          credits: parseInt(credits),
+          credits: parseInt(credits, 10),
         }),
       })
 
       const data = await response.json()
 
-      if (data.success && data.data) {
+      if (response.ok && data.success && data.data) {
         setOrderId(data.data.id)
         if (data.data.payUrl) {
           setPayUrl(data.data.payUrl)
@@ -107,12 +107,12 @@ export default function PaymentPage() {
   }
 
   // 如果用户未登录，显示加载状态
-  if (!user || !token) {
+  if (!user) {
     return (
       <div style={{ minHeight: 'calc(100vh - 200px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
         <div style={{ textAlign: 'center' }}>
           <Loader2 style={{ width: '48px', height: '48px', color: '#1A73E8', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-          <p style={{ fontSize: '16px', color: '#6b7280' }}>正在跳转到登录页面...</p>
+          <p style={{ fontSize: '16px', color: '#6b7280' }}>正在跳转到首页...</p>
         </div>
       </div>
     )

@@ -14,9 +14,7 @@ export function Header() {
   const { user } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const isGenerateView = pathname?.startsWith('/generate') ?? false
-  const isAuthRemoved = pathname === '/auth'
-  const hiddenHeader = isGenerateView || isAuthRemoved
+  const hiddenHeader = pathname !== '/'
 
   useEffect(() => {
     if (pathname !== '/') {
@@ -82,7 +80,19 @@ export function Header() {
   )
 
   return (
-    <header className="header">
+    <header
+      className="header"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 200,
+        backgroundColor: '#FFFFFF',
+        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.04)',
+        height: '64px',
+      }}
+    >
       <div
         className="main-content-container"
         style={{

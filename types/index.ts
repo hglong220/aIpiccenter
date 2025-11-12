@@ -112,28 +112,26 @@ export interface SendVerificationCodeRequest {
   type: 'register' | 'login' | 'reset';
 }
 
-export interface VerifyCodeRequest {
-  phone: string;
-  code: string;
-  type: 'register' | 'login' | 'reset';
-}
-
 export interface RegisterRequest {
   phone: string;
   code: string;
-  username?: string;
-  password?: string;
+  username: string;
+  password: string;
 }
 
 export interface LoginRequest {
   phone: string;
   code: string;
-  username?: string; // 如果使用用户名登录
+}
+
+export interface ResetPasswordRequest {
+  phone: string;
+  code: string;
+  newPassword: string;
 }
 
 export interface AuthResponse {
   user: User;
-  token: string;
 }
 
 // Order Types
@@ -175,6 +173,32 @@ export interface GenerationHistory {
   creditsUsed: number;
   status: string;
   createdAt: string;
+}
+
+// Chat Types
+export type ChatRole = 'user' | 'assistant'
+
+export interface ChatSessionSummary {
+  id: string
+  title?: string
+  isStarred: boolean
+  createdAt: string
+  updatedAt: string
+  lastMessagePreview?: string
+  messageCount: number
+}
+
+export interface ChatMessage {
+  id: string
+  chatId: string
+  role: ChatRole
+  content: string
+  createdAt: string
+  imagePath?: string
+}
+
+export interface ChatSessionDetail extends ChatSessionSummary {
+  messages: ChatMessage[]
 }
 
 

@@ -1,60 +1,38 @@
 /**
  * Authentication Context
- * 
+ *
  * 用户认证状态管理
  */
 
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import type { User, AuthResponse } from '@/types'
+import type { User } from '@/types'
 import toast from 'react-hot-toast'
 
 interface AuthContextType {
   user: User | null
-  token: string | null
   loading: boolean
-  login: (phone: string, code: string, username?: string, password?: string, loginType?: 'code' | 'password') => Promise<boolean>
-  register: (phone: string, code: string, username?: string, password?: string) => Promise<boolean>
-  logout: () => void
+  login: (phone: string, code: string, options?: { password?: string }) => Promise<boolean>
+  register: (phone: string, code: string, username: string, password: string) => Promise<boolean>
+  logout: () => Promise<void>
   refreshUser: () => Promise<void>
   sendCode: (phone: string, type: 'register' | 'login' | 'reset') => Promise<boolean>
+  resetPassword: (phone: string, code: string, newPassword: string) => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 初始化：从 localStorage 恢复用户状态
   useEffect(() => {
-    const storedToken = localStorage.getItem('auth_token')
-    const storedUser = localStorage.getItem('auth_user')
-
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken)
-        setUser(JSON.parse(storedUser))
-        // 验证 token 是否有效
-        refreshUser()
-      } catch (error) {
-        console.error('恢复用户状态失败:', error)
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('auth_user')
-      }
-    } else {
-      setLoading(false)
-    }
+    void refreshUser()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 发送验证码
-  const sendCode = async (
-    phone: string,
-    type: 'register' | 'login' | 'reset'
-  ): Promise<boolean> => {
+  const sendCode = async (phone: string, type: 'register' | 'login' | 'reset'): Promise<boolean> => {
     try {
       const response = await fetch('/api/auth/send-code', {
         method: 'POST',
@@ -66,13 +44,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json()
 
-      if (data.success) {
+      if (response.ok && data.success) {
         toast.success('验证码已发送')
         return true
-      } else {
-        toast.error(data.error || '发送验证码失败')
-        return false
       }
+
+      toast.error(data.error || '验证码发送失败')
+      return false
     } catch (error) {
       console.error('发送验证码错误:', error)
       toast.error('发送验证码失败，请稍后再试')
@@ -80,35 +58,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 注册
-  const register = async (
-    phone: string,
-    code: string,
-    username?: string,
-    password?: string
-  ): Promise<boolean> => {
+  const register = async (phone: string, code: string, username: string, password: string): Promise<boolean> => {
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ phone, code, username, password }),
       })
 
-      const data: { success: boolean; data?: AuthResponse; error?: string } = await response.json()
+      const data = await response.json()
 
-      if (data.success && data.data) {
-        setUser(data.data.user)
-        setToken(data.data.token)
-        localStorage.setItem('auth_token', data.data.token)
-        localStorage.setItem('auth_user', JSON.stringify(data.data.user))
+      if (response.ok && data.success) {
         toast.success('注册成功')
+        await refreshUser()
         return true
-      } else {
-        toast.error(data.error || '注册失败')
-        return false
       }
+
+      toast.error(data.error || '注册失败')
+      return false
     } catch (error) {
       console.error('注册错误:', error)
       toast.error('注册失败，请稍后再试')
@@ -116,36 +86,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 登录
-  const login = async (
-    phone: string,
-    code: string,
-    username?: string,
-    password?: string,
-    loginType: 'code' | 'password' = 'code'
-  ): Promise<boolean> => {
+  const login = async (phone: string, code: string, options?: { password?: string }): Promise<boolean> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ phone, code, username, password, loginType }),
+        credentials: 'include',
+        body: JSON.stringify({ phone, code, password: options?.password, loginType: options?.password ? 'password' : 'code' }),
       })
 
-      const data: { success: boolean; data?: AuthResponse; error?: string } = await response.json()
+      const data = await response.json()
 
-      if (data.success && data.data) {
-        setUser(data.data.user)
-        setToken(data.data.token)
-        localStorage.setItem('auth_token', data.data.token)
-        localStorage.setItem('auth_user', JSON.stringify(data.data.user))
+      if (response.ok && data.success) {
         toast.success('登录成功')
+        await refreshUser()
         return true
-      } else {
-        toast.error(data.error || '登录失败')
-        return false
       }
+
+      toast.error(data.error || '登录失败')
+      return false
     } catch (error) {
       console.error('登录错误:', error)
       toast.error('登录失败，请稍后再试')
@@ -153,41 +114,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // 登出
-  const logout = () => {
-    setUser(null)
-    setToken(null)
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_user')
-    toast.success('已退出登录')
-  }
-
-  // 刷新用户信息
-  const refreshUser = async () => {
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
+  const resetPassword = async (phone: string, code: string, newPassword: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/auth/me', {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ phone, code, newPassword }),
       })
 
-      const data: { success: boolean; data?: User; error?: string } = await response.json()
+      const data = await response.json()
 
+      if (response.ok && data.success) {
+        toast.success('密码重置成功')
+        return true
+      }
+
+      toast.error(data.error || '密码重置失败')
+      return false
+    } catch (error) {
+      console.error('重置密码错误:', error)
+      toast.error('密码重置失败，请稍后再试')
+      return false
+    }
+  }
+
+  const logout = async () => {
+    try {
+      await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('退出登录错误:', error)
+    } finally {
+      setUser(null)
+      toast.success('已退出登录')
+      window.location.href = '/'
+    }
+  }
+
+  const refreshUser = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        const message = await response.text()
+        console.warn('refreshUser failed:', response.status, message)
+        setUser(null)
+        return
+      }
+
+      const data: { success: boolean; data?: User } = await response.json()
       if (data.success && data.data) {
         setUser(data.data)
-        localStorage.setItem('auth_user', JSON.stringify(data.data))
       } else {
-        // Token 无效，清除状态
-        logout()
+        console.warn('refreshUser response error:', data.error)
+        setUser(null)
       }
     } catch (error) {
       console.error('刷新用户信息错误:', error)
-      logout()
+      setUser(null)
     } finally {
       setLoading(false)
     }
@@ -197,13 +188,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        token,
         loading,
         login,
         register,
         logout,
         refreshUser,
         sendCode,
+        resetPassword,
       }}
     >
       {children}

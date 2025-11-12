@@ -142,16 +142,99 @@ npm run dev
 - [Gemini API 文档](https://ai.google.dev/docs)
 - [API 配额和限制](https://ai.google.dev/pricing)
 
+## 🌐 代理配置（重要！）
+
+### 为什么需要代理？
+
+如果您的服务器在中国大陆或网络环境无法直接访问 Google API，需要配置代理才能正常调用 Gemini API。
+
+### 方法一：使用启动脚本（推荐）
+
+我们提供了带代理配置的启动脚本，会自动设置代理环境变量：
+
+**Windows (PowerShell):**
+```powershell
+# 开发模式
+.\start-with-proxy.ps1 dev
+
+# 或使用 npm 脚本
+npm run dev:proxy
+```
+
+**Linux/Mac (Bash):**
+```bash
+# 先添加执行权限
+chmod +x start-with-proxy.sh
+
+# 开发模式
+./start-with-proxy.sh dev
+
+# 或使用 npm 脚本（需要先配置）
+npm run dev:proxy
+```
+
+### 方法二：在 .env.local 中配置
+
+在项目根目录的 `.env.local` 文件中添加以下配置：
+
+```env
+# 代理配置（使用香港静态 IP：35.220.189.112:3128）
+HTTPS_PROXY=http://35.220.189.112:3128
+HTTP_PROXY=http://35.220.189.112:3128
+GEMINI_PROXY_URL=http://35.220.189.112:3128
+```
+
+**注意：** Next.js 默认不会读取服务器端环境变量（如 `HTTPS_PROXY`），所以推荐使用方法一（启动脚本）。
+
+### 方法三：设置系统环境变量（Windows）
+
+1. 打开"系统属性" → "环境变量"
+2. 在"系统变量"中添加：
+   - `HTTPS_PROXY` = `http://35.220.189.112:3128`
+   - `HTTP_PROXY` = `http://35.220.189.112:3128`
+   - `GEMINI_PROXY_URL` = `http://35.220.189.112:3128`
+3. 重启电脑或重启服务
+
+### 验证代理配置
+
+启动应用后，查看控制台日志，应该看到：
+```
+[Gemini] Proxy agent created successfully: http://35.220.189.112:3128
+[Gemini] Using proxy for Google API request
+```
+
+如果看到：
+```
+[Gemini] No proxy URL found in environment variables
+[Gemini] No proxy configured - direct connection may fail
+```
+
+说明代理未配置，需要按照上述方法配置。
+
 ## 🆘 常见问题
 
 ### Q: 在中国大陆无法访问 Google AI Studio？
-A: 需要使用 VPN 或代理访问，或使用 API 中转服务。
+A: 需要使用 VPN 或代理访问，或使用 API 中转服务。配置代理后，API 调用也会通过代理。
+
+### Q: 代理配置后仍然失败？
+A: 请检查：
+1. 代理服务器是否正常运行（35.220.189.112:3128）
+2. 环境变量是否正确设置
+3. 应用是否已重启（环境变量只在启动时读取）
+4. 查看控制台日志中的代理配置信息
 
 ### Q: API Key 有使用限制吗？
 A: 免费版本每分钟 15 次请求，付费版本有更高的配额。
 
 ### Q: 图像生成什么时候能使用真实 API？
 A: 需要集成其他图像生成服务，Gemini 不支持图像生成。
+
+
+
+
+
+
+
 
 
 

@@ -17,84 +17,40 @@ export function Footer() {
   return (
     <footer
       style={{
-        backgroundColor: '#FFFFFF',
-        marginTop: 'auto',
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        backgroundColor: 'rgba(255, 255, 255, 0.92)',
+        backdropFilter: 'blur(8px)',
+        borderTop: '1px solid rgba(229, 231, 235, 0.8)',
+        zIndex: 120,
       }}
     >
-      {/* Full width border */}
-      <div
-        style={{
-          width: '100%',
-          height: '1px',
-          backgroundColor: '#e5e5e5',
-        }}
-      ></div>
-
       <div
         className="main-content-container"
         style={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          minHeight: '60px',
-          paddingTop: '20px',
-          paddingBottom: '20px',
+          minHeight: '56px',
+          gap: '24px',
+          flexWrap: 'wrap',
+          padding: '12px 16px',
+          fontSize: '12px',
+          color: '#6b7280',
         }}
       >
-        {/* Single line content */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '24px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <span
-            style={{
-              fontSize: '12px',
-              color: '#888888',
-              letterSpacing: '0.01em',
-              fontWeight: 400,
-            }}
-          >
-            © {currentYear} AI Pic Center. All rights reserved.
-          </span>
-          <Link
-            href="/privacy"
-            className="transition hover:text-[#007AFF]"
-            style={{
-              fontSize: '12px',
-              color: '#888888',
-              textDecoration: 'none',
-            }}
-          >
-            隐私政策
-          </Link>
-          <Link
-            href="/terms"
-            className="transition hover:text-[#007AFF]"
-            style={{
-              fontSize: '12px',
-              color: '#888888',
-              textDecoration: 'none',
-            }}
-          >
-            服务条款
-          </Link>
-          <Link
-            href="/contact"
-            className="transition hover:text-[#007AFF]"
-            style={{
-              fontSize: '12px',
-              color: '#888888',
-              textDecoration: 'none',
-            }}
-          >
-            联系我们
-          </Link>
-        </div>
+        <span>© {currentYear} AI Pic Center. All rights reserved.</span>
+        <Link href="/privacy" style={{ textDecoration: 'none', color: '#6b7280' }}>
+          隐私政策
+        </Link>
+        <Link href="/terms" style={{ textDecoration: 'none', color: '#6b7280' }}>
+          服务条款
+        </Link>
+        <Link href="/contact" style={{ textDecoration: 'none', color: '#6b7280' }}>
+          联系我们
+        </Link>
       </div>
     </footer>
   )

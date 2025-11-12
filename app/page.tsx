@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { GeminiHero } from '@/components/home/GeminiHero'
 import { useAuth } from '@/contexts/AuthContext'
+import { GeminiHero } from '@/components/home/GeminiHero'
 
 export default function HomePage() {
   const router = useRouter()
@@ -15,15 +15,7 @@ export default function HomePage() {
     }
   }, [loading, user, router])
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }}>
-        <span style={{ fontSize: '14px', color: '#6b7280' }}>加载中…</span>
-      </div>
-    )
-  }
-
-  if (user) {
+  if (!loading && user) {
     return null
   }
 

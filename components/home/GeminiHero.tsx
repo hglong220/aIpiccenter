@@ -14,7 +14,9 @@ export function GeminiHero() {
         textAlign: 'center',
         paddingTop: '40px',
         paddingBottom: '10px',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'transparent',
+        position: 'relative',
+        zIndex: 1,
       }}
     >
       <div className="main-content-container">
@@ -23,28 +25,29 @@ export function GeminiHero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-          >
-          </motion.div>
+          ></motion.div>
         </div>
-        
-        {/* AI 产品演示视频 */}
+
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3 }}
           style={{
             width: '100%',
-            marginBottom: '12px'
+            marginBottom: '12px',
           }}
         >
           <div
             style={{
-              width: '100%',
-              borderRadius: '16px',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
               overflow: 'hidden',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
               backgroundColor: '#000',
-              height: 'min(150vh, 1500px)',
+              pointerEvents: 'none',
+              zIndex: 0,
             }}
           >
             <video
@@ -55,24 +58,23 @@ export function GeminiHero() {
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover'
+                objectFit: 'cover',
+                objectPosition: 'center',
               }}
             >
               <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4" />
-              {/* 备用图片 */}
-              <img 
-                src="https://picsum.photos/1920/1080?random=hero-video" 
+              <img
+                src="https://picsum.photos/1920/1080?random=hero-video"
                 alt="AI 产品演示"
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover'
+                  objectFit: 'cover',
                 }}
               />
             </video>
           </div>
         </motion.div>
-        
       </div>
     </section>
   )
