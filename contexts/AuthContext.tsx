@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null)
       toast.success('已退出登录')
-      window.location.href = '/'
+      window.location.href = '/?authModal=1'
     }
   }
 

@@ -11,7 +11,6 @@ import {
   MessageCircle,
   NotepadText,
   MessageSquareMore,
-  History,
   LayoutDashboard,
   Images,
   Settings,
@@ -29,6 +28,8 @@ import {
   LogOut,
   Smartphone,
   Shield,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -183,31 +184,10 @@ const sidebarIcons = [
   { icon: MessageSquareMore, label: '聊天', href: '/generate?view=chat' },
   { icon: Image, label: '图像', href: '/generate?view=image' },
   { icon: Sparkles, label: 'AI 工具', href: '/generate?view=tools' },
-  { icon: History, label: '历史记录', action: 'history' as const },
   { icon: LayoutDashboard, label: '项目', href: '/generate?view=projects' },
   { icon: Images, label: '画廊', href: '/generate?view=gallery' },
   { icon: MessageCircle, label: '消息', href: '/generate?view=messages' },
 ]
-
-const historySections = [
-  { section: '今天', items: [{ id: 'today-1', title: '网站全屏动画设计推荐' }] },
-  { section: '昨天', items: [{ id: 'yesterday-1', title: '图像生成：Flux 模型应用' }] },
-  { section: '前天', items: [{ id: 'before-1', title: 'Stagewise 0.6.x 源码与构建' }] },
-  { section: '11 月 22 日', items: [{ id: 'nov-1', title: '国企风格商贸公司名称生成' }] },
-  { section: '11 月 18 日', items: [{ id: 'nov-2', title: '室内设计副业建议与经济应对' }] },
-  { section: '11 月 11 日', items: [{ id: 'nov-3', title: 'AI Image Generation Controls' }] },
-  { section: '10 月 6 日', items: [{ id: 'oct-1', title: 'ComfyUI Workflows for Highlights' }] },
-  { section: '9 月 28 日', items: [{ id: 'sep-1', title: '电商主图 A/B 测试总结' }] },
-  { section: '9 月 14 日', items: [{ id: 'sep-2', title: '产品发布会主持稿优化' }] },
-  { section: '9 月 02 日', items: [{ id: 'sep-3', title: 'AI 图像风格测试' }] },
-]
-
-const flatHistory = historySections.flatMap((group) =>
-  group.items.map((item) => ({
-    ...item,
-    section: group.section,
-  }))
-)
 
 const searchGroups = [
   {
@@ -243,6 +223,7 @@ export default function GenerateLandingPage() {
   const view = searchParams.get('view') ?? 'chat'
   const isImageView = view === 'image'
   const isVideoView = view === 'video'
+  const isChatView = view === 'chat'
   const staticView = staticViewConfigs[view]
   const router = useRouter()
   const { user, logout } = useAuth()
@@ -255,15 +236,13 @@ export default function GenerateLandingPage() {
   const [hoveredSidebarIndex, setHoveredSidebarIndex] = useState<number | null>(null)
   const [isHoveringCreate, setIsHoveringCreate] = useState(false)
   const [navExpanded, setNavExpanded] = useState(false)
-  const [historyExpanded, setHistoryExpanded] = useState(false)
-  const [activeHistoryId, setActiveHistoryId] = useState('')
-  const [hoveredHistoryId, setHoveredHistoryId] = useState<string | null>(null)
-  const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false)
-  const [historyListVisible, setHistoryListVisible] = useState(false)
   const [searchOverlayOpen, setSearchOverlayOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null)
   const [hoveredSearchId, setHoveredSearchId] = useState<string | null>(null)
+  const [editingSearchId, setEditingSearchId] = useState<string | null>(null)
+  const [editSearchTitle, setEditSearchTitle] = useState('')
+  const [searchItems, setSearchItems] = useState(flatSearchItems)
   const [geminiPrompt, setGeminiPrompt] = useState('')
   const [geminiAnswer, setGeminiAnswer] = useState<string | null>(null)
   const [geminiRaw, setGeminiRaw] = useState<unknown>(null)
@@ -284,33 +263,106 @@ export default function GenerateLandingPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [imageChatMessages, setImageChatMessages] = useState<ChatMessage[]>([])
   
+  // 会话管理相关状态
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null)
+  const [chatSessions, setChatSessions] = useState<Array<{
+    id: string
+    title: string | null
+    updatedAt: string
+    lastMessage: string | null
+  }>>([])
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false)
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
+  
   // 标记是否已加载，防止初始加载时保存
   const isLoadedRef = useRef(false)
   const isImageLoadedRef = useRef(false)
   
-  // 从 localStorage 加载聊天记录（仅在客户端）
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('chatMessages')
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          // 过滤掉发送中的消息和欢迎消息
-          const filtered = parsed.filter(
-            (msg: ChatMessage) => msg.status !== 'sending' && msg.id !== 'welcome'
-          )
-          if (filtered.length > 0) {
-            setChatMessages(filtered)
-            isLoadedRef.current = true
-            return
-          }
+  // 加载会话列表
+  const loadChatSessions = useCallback(async () => {
+    if (!user) return
+    setIsLoadingSessions(true)
+    try {
+      const response = await fetch('/api/chats/list')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setChatSessions(data.data || [])
         }
-      } catch (e) {
-        console.error('Failed to load chat messages from localStorage:', e)
       }
-      isLoadedRef.current = true
+    } catch (error) {
+      console.error('加载会话列表失败:', error)
+    } finally {
+      setIsLoadingSessions(false)
+    }
+  }, [user])
+
+  // 创建新会话
+  const createNewChat = useCallback(async () => {
+    try {
+      const response = await fetch('/api/chats/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: null }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          const newChatId = data.data.id
+          setCurrentChatId(newChatId)
+          setChatMessages([])
+          await loadChatSessions()
+          return newChatId
+        }
+      }
+    } catch (error) {
+      console.error('创建新会话失败:', error)
+    }
+    return null
+  }, [loadChatSessions])
+
+  // 加载会话消息
+  const loadChatHistory = useCallback(async (chatId: string) => {
+    try {
+      const response = await fetch(`/api/chats/${chatId}/history`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          // 确保消息格式正确，包括图像数据
+          const messages = (data.data.messages || []).map((msg: any) => ({
+            ...msg,
+            images: msg.images || undefined,
+          }))
+          setChatMessages(messages)
+          setCurrentChatId(chatId)
+        }
+      }
+    } catch (error) {
+      console.error('加载会话历史失败:', error)
     }
   }, [])
+
+  // 切换会话
+  const switchChat = useCallback(async (chatId: string) => {
+    await loadChatHistory(chatId)
+  }, [loadChatHistory])
+
+  // 初始化：加载会话列表，如果没有当前会话则创建新会话
+  useEffect(() => {
+    if ((isChatView || isImageView) && user) {
+      loadChatSessions()
+      // 检查URL参数中是否有chatId
+      const urlParams = new URLSearchParams(window.location.search)
+      const chatIdFromUrl = urlParams.get('chatId')
+      if (chatIdFromUrl) {
+        loadChatHistory(chatIdFromUrl)
+      } else if (!currentChatId) {
+        // 如果没有当前会话，创建新会话
+        createNewChat()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChatView, isImageView, user])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -377,7 +429,6 @@ export default function GenerateLandingPage() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const imageChatContainerRef = useRef<HTMLDivElement>(null)
-  const isChatView = view === 'chat'
   
   const modelOptions: ModelOption[] = isImageView ? ['图片'] : isVideoView ? ['视频'] : ['自动模式', '快速模式', '专家模式']
   const modelMenuRef = useRef<HTMLDivElement>(null)
@@ -387,12 +438,12 @@ export default function GenerateLandingPage() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   const filteredSearchItems = useMemo(() => {
-    if (!searchQuery.trim()) return flatSearchItems
-    return flatSearchItems.filter((item) =>
+    if (!searchQuery.trim()) return searchItems
+    return searchItems.filter((item) =>
       item.title.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
       item.subtitle?.toLowerCase().includes(searchQuery.trim().toLowerCase())
     )
-  }, [searchQuery])
+  }, [searchQuery, searchItems])
 
   useEffect(() => {
     if (!filteredSearchItems.length) {
@@ -409,25 +460,35 @@ export default function GenerateLandingPage() {
 
   const previewSearchItem = useMemo(() => {
     if (hoveredSearchId) {
-      return flatSearchItems.find((item) => item.id === hoveredSearchId) || null
+      return searchItems.find((item) => item.id === hoveredSearchId) || null
     }
     if (activeSearchId) {
-      return flatSearchItems.find((item) => item.id === activeSearchId) || null
+      return searchItems.find((item) => item.id === activeSearchId) || null
     }
     return null
-  }, [hoveredSearchId, activeSearchId])
+  }, [hoveredSearchId, activeSearchId, searchItems])
 
-  useEffect(() => {
-    setHistoryOverlayOpen(false)
-    if (!navExpanded) {
-      setHistoryExpanded(false)
-      setHistoryListVisible(false)
-    } else {
-      setHistoryListVisible(false)
-      const timer = window.setTimeout(() => setHistoryListVisible(true), 260)
-      return () => window.clearTimeout(timer)
+  const handleRenameSearchItem = (id: string, newTitle: string) => {
+    if (!newTitle.trim()) return
+    setSearchItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, title: newTitle.trim() } : item))
+    )
+    setEditingSearchId(null)
+    setEditSearchTitle('')
+  }
+
+  const handleDeleteSearchItem = (id: string) => {
+    setSearchItems((prev) => prev.filter((item) => item.id !== id))
+    if (activeSearchId === id) {
+      setActiveSearchId(null)
     }
-  }, [navExpanded])
+  }
+
+  const handleStartRename = (id: string, currentTitle: string) => {
+    setEditingSearchId(id)
+    setEditSearchTitle(currentTitle)
+  }
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -867,24 +928,23 @@ export default function GenerateLandingPage() {
   }, [userMenuOpen])
 
   useEffect(() => {
-    const shouldLock = historyOverlayOpen || searchOverlayOpen
+    const shouldLock = searchOverlayOpen
     document.body.style.overflow = shouldLock ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [historyOverlayOpen, searchOverlayOpen])
+  }, [searchOverlayOpen])
 
   useEffect(() => {
     if (searchOverlayOpen) {
       setSearchQuery('')
-      setActiveSearchId(flatSearchItems[0]?.id ?? null)
+      setActiveSearchId(searchItems[0]?.id ?? null)
     }
-  }, [searchOverlayOpen])
+  }, [searchOverlayOpen, searchItems])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setHistoryOverlayOpen(false)
         setSearchOverlayOpen(false)
       }
     }
@@ -949,13 +1009,63 @@ export default function GenerateLandingPage() {
 
   // 聊天消息发送处理函数
   const handleSendMessage = async () => {
-    if (!isChatView) {
-      return
-    }
     const trimmed = prompt.trim()
-    if (!trimmed || isSendingMessage) {
+    // 先检查输入是否为空，避免在状态检查时提前返回
+    if (!trimmed) {
       return
     }
+    // 检查是否正在处理中
+    if (isSendingMessage || isGeneratingImage) {
+      return
+    }
+
+    // 只在聊天视图和图像视图中处理
+    if (!isChatView && !isImageView) {
+      return
+    }
+
+    // 如果是图像模式，先立即添加用户消息，然后异步检查意图
+    if (isImageView) {
+      console.log('[Chat] Image view detected')
+      
+      // 先清空输入框，避免重复提交
+      setPrompt('')
+      // 设置生成状态，防止重复提交
+      setIsGeneratingImage(true)
+      
+      // 立即添加用户消息到界面
+      const timestamp = new Date().toISOString()
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        sender: 'user',
+        text: trimmed,
+        timestamp,
+        status: 'sent',
+      }
+      
+      setImageChatMessages((prev) => [...prev, userMessage])
+      
+      // 使用 setTimeout 确保用户消息先显示，然后再处理回复
+      setTimeout(() => {
+        // 让 Gemini 判断用户意图并处理
+        handleImageChatMessage(trimmed, userMessage.id)
+      }, 100) // 100ms 延迟，确保用户消息先渲染
+      
+      return
+    }
+
+    // 确保有当前会话
+    let chatId = currentChatId
+    if (!chatId) {
+      chatId = await createNewChat()
+      if (!chatId) {
+        console.error('无法创建新会话')
+        return
+      }
+    }
+    
+    // 聊天模式，继续正常的文本对话流程
+    console.log('[Chat] Chat view detected, calling text conversation')
 
     const timestamp = new Date().toISOString()
     const userMessage: ChatMessage = {
@@ -985,6 +1095,20 @@ export default function GenerateLandingPage() {
     setPrompt('')
     setIsSendingMessage(true)
 
+    // 保存用户消息到数据库
+    try {
+      await fetch(`/api/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'user',
+          content: trimmed,
+        }),
+      })
+    } catch (error) {
+      console.error('保存用户消息失败:', error)
+    }
+
     try {
       const response = await fetch('/api/ai/gemini', {
         method: 'POST',
@@ -994,13 +1118,13 @@ export default function GenerateLandingPage() {
             (selectedModel === '专家模式'
               ? '你现在处于专家模式，请用严谨、专业的方式回答。以下是当前对话：\n'
               : '请以友好、易懂的方式回答用户。以下是当前对话：\n') + conversationSnapshot,
+          stream: true, // 启用流式响应
         }),
       })
 
-      const data = await response.json().catch(() => ({}))
-
       if (!response.ok) {
-        const errorMessage = (data as { error?: string })?.error || '服务暂时不可用，请稍后重试。'
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = (errorData as { error?: string })?.error || '服务暂时不可用，请稍后重试。'
         setChatMessages((prev) =>
           prev.map((message) =>
             message.id === placeholderId
@@ -1016,19 +1140,174 @@ export default function GenerateLandingPage() {
         return
       }
 
-      const replyText = (data as { text?: string })?.text?.trim()
-      setChatMessages((prev) =>
-        prev.map((message) =>
-          message.id === placeholderId
-            ? {
-                ...message,
-                text: replyText && replyText.length > 0 ? replyText : '（未获取到回复内容）',
-                status: 'sent',
-                timestamp: new Date().toISOString(),
+      // 检查是否是流式响应
+      const contentType = response.headers.get('content-type')
+      console.log('[Chat] Response content-type:', contentType)
+      
+      if (contentType?.includes('text/event-stream')) {
+        console.log('[Chat] Using stream response')
+        // 流式响应处理
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        let accumulatedText = ''
+
+        if (!reader) {
+          throw new Error('无法读取流式响应')
+        }
+
+        try {
+          let readCount = 0
+          while (true) {
+            const { done, value } = await reader.read()
+            readCount++
+
+            if (done) {
+              // 流结束，更新最终状态
+              console.log('[Chat] Stream finished, read count:', readCount, 'accumulated text length:', accumulatedText.length)
+              if (!accumulatedText) {
+                console.warn('[Chat] No text received from stream after', readCount, 'reads')
               }
-            : message,
-        ),
-      )
+              const finalText = accumulatedText || '（未获取到回复内容，可能是流式响应解析失败）'
+              setChatMessages((prev) =>
+                prev.map((message) =>
+                  message.id === placeholderId
+                    ? {
+                        ...message,
+                        text: finalText,
+                        status: 'sent',
+                        timestamp: new Date().toISOString(),
+                      }
+                    : message,
+                ),
+              )
+              
+              // 保存助手回复到数据库
+              if (chatId && finalText) {
+                try {
+                  await fetch(`/api/chats/${chatId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      role: 'assistant',
+                      content: finalText,
+                    }),
+                  })
+                  // 刷新会话列表
+                  await loadChatSessions()
+                } catch (error) {
+                  console.error('保存助手消息失败:', error)
+                }
+              }
+              
+              break
+            }
+
+            console.log(`[Chat] Read chunk ${readCount}, value length:`, value?.length || 0, 'value type:', typeof value)
+            
+            if (!value || value.length === 0) {
+              console.warn('[Chat] Empty chunk received')
+              continue
+            }
+
+            // 解析流式数据
+            const chunk = decoder.decode(value, { stream: true })
+            console.log('[Chat] Raw chunk received (first 500 chars):', chunk.substring(0, 500))
+            
+            const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+            console.log('[Chat] Parsed lines count:', lines.length)
+            
+            if (lines.length === 0) {
+              console.warn('[Chat] No lines found in chunk')
+            }
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6)
+                  console.log('[Chat] Parsing data line:', jsonStr.substring(0, 100))
+                  const data = JSON.parse(jsonStr)
+                  const text = (data as { text?: string })?.text || ''
+
+                  if (text) {
+                    accumulatedText += text
+                    console.log('[Chat] Received text chunk:', text.substring(0, 50) + '...')
+                    // 实时更新消息内容
+                    setChatMessages((prev) =>
+                      prev.map((message) =>
+                        message.id === placeholderId
+                          ? {
+                              ...message,
+                              text: accumulatedText,
+                              status: 'sending',
+                              timestamp: new Date().toISOString(),
+                            }
+                          : message,
+                      ),
+                    )
+                  } else {
+                    console.warn('[Chat] Empty text in data chunk:', data)
+                  }
+                } catch (e) {
+                  console.error('[Chat] Failed to parse data line:', line.substring(0, 200), e)
+                }
+              } else if (line.trim()) {
+                console.log('[Chat] Non-data line:', line.substring(0, 100))
+              }
+            }
+          }
+        } catch (streamError) {
+          console.error('流式读取错误:', streamError)
+          console.error('已累积的文本:', accumulatedText)
+          setChatMessages((prev) =>
+            prev.map((message) =>
+              message.id === placeholderId
+                ? {
+                    ...message,
+                    text: accumulatedText || `流式读取失败: ${streamError instanceof Error ? streamError.message : '未知错误'}。请检查网络连接或重试。`,
+                    status: accumulatedText ? 'sent' : 'failed',
+                    timestamp: new Date().toISOString(),
+                  }
+                : message,
+            ),
+          )
+        } finally {
+          reader.releaseLock()
+        }
+      } else {
+        // 非流式响应（回退方案）
+        const data = await response.json().catch(() => ({}))
+        const replyText = (data as { text?: string })?.text?.trim() || '（未获取到回复内容）'
+        setChatMessages((prev) =>
+          prev.map((message) =>
+            message.id === placeholderId
+              ? {
+                  ...message,
+                  text: replyText,
+                  status: 'sent',
+                  timestamp: new Date().toISOString(),
+                }
+              : message,
+          ),
+        )
+        
+        // 保存助手回复到数据库
+        if (chatId && replyText) {
+          try {
+            await fetch(`/api/chats/${chatId}/messages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: replyText,
+              }),
+            })
+            // 刷新会话列表
+            await loadChatSessions()
+          } catch (error) {
+            console.error('保存助手消息失败:', error)
+          }
+        }
+      }
     } catch (error) {
       console.error('发送消息失败', error)
       setChatMessages((prev) =>
@@ -1048,9 +1327,10 @@ export default function GenerateLandingPage() {
     }
   }
 
-  // 图像生成处理函数（用于 image view）
-  const handleImageGeneration = useCallback(async (userPrompt: string) => {
-    if (!userPrompt.trim() || isGeneratingImage) {
+  // 在聊天中处理图像生成
+  const handleImageGenerationInChat = useCallback(async (userPrompt: string, chatId: string) => {
+    const trimmed = userPrompt.trim()
+    if (!trimmed || isGeneratingImage) {
       return
     }
 
@@ -1058,7 +1338,7 @@ export default function GenerateLandingPage() {
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      text: userPrompt.trim(),
+      text: trimmed,
       timestamp,
       status: 'sent',
     }
@@ -1072,8 +1352,131 @@ export default function GenerateLandingPage() {
       status: 'sending',
     }
 
-    setImageChatMessages((prev) => [...prev, userMessage, placeholderMessage])
+    setChatMessages((prev) => [...prev, userMessage, placeholderMessage])
+    setPrompt('')
     setIsGeneratingImage(true)
+
+    // 保存用户消息到数据库
+    try {
+      await fetch(`/api/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'user',
+          content: trimmed,
+        }),
+      })
+    } catch (error) {
+      console.error('保存用户消息失败:', error)
+    }
+
+    try {
+      // 根据选择的宽高比确定 aspectRatio
+      const aspectRatioMap: Record<AspectOption['id'], '1:1' | '3:4' | '4:3' | '9:16' | '16:9'> = {
+        square: '1:1',
+        portrait: '3:4',
+        landscape: '4:3',
+      }
+
+      const response = await fetch('/api/image-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          prompt: trimmed,
+          aspectRatio: aspectRatioMap[selectedAspect] || '1:1',
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data.success) {
+        const errorMessage = data?.error || '图像生成失败，请稍后再试。'
+        setChatMessages((prev) =>
+          prev.map((message) =>
+            message.id === placeholderId
+              ? {
+                  ...message,
+                  text: errorMessage,
+                  status: 'failed',
+                  timestamp: new Date().toISOString(),
+                }
+              : message,
+          ),
+        )
+        return
+      }
+
+      const images = data.data?.images || []
+      const finalMessage: ChatMessage = {
+        id: placeholderId,
+        sender: 'assistant',
+        text: `已为你生成图像：${trimmed}`,
+        images,
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+      }
+
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId ? finalMessage : message,
+        ),
+      )
+
+      // 保存图像结果到数据库（将图像 URL 保存为 JSON）
+      if (chatId && images.length > 0) {
+        try {
+          await fetch(`/api/chats/${chatId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              role: 'assistant',
+              content: `已为你生成图像：${trimmed}`,
+              imagePath: JSON.stringify(images), // 将图像数组保存为 JSON 字符串
+            }),
+          })
+          // 刷新会话列表
+          await loadChatSessions()
+        } catch (error) {
+          console.error('保存图像消息失败:', error)
+        }
+      }
+    } catch (error) {
+      console.error('生成图像失败', error)
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId
+            ? {
+                ...message,
+                text: '生成失败，请检查网络后重试。',
+                status: 'failed',
+                timestamp: new Date().toISOString(),
+              }
+            : message,
+        ),
+      )
+    } finally {
+      setIsGeneratingImage(false)
+    }
+  }, [isGeneratingImage, selectedAspect, loadChatSessions])
+
+  // 图像生成处理函数（直接生成，不检查意图）
+  const handleImageGenerationDirect = useCallback(async (userPrompt: string, userMessageId: string) => {
+    if (!userPrompt.trim()) {
+      setIsGeneratingImage(false)
+      return
+    }
+
+    const placeholderId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const placeholderMessage: ChatMessage = {
+      id: placeholderId,
+      sender: 'assistant',
+      text: '正在生成图像…',
+      timestamp: new Date().toISOString(),
+      status: 'sending',
+    }
+
+    setImageChatMessages((prev) => [...prev, placeholderMessage])
 
     try {
       // 根据选择的宽高比确定 aspectRatio
@@ -1145,7 +1548,162 @@ export default function GenerateLandingPage() {
     } finally {
       setIsGeneratingImage(false)
     }
-  }, [isGeneratingImage, selectedAspect])
+  }, [selectedAspect])
+
+  // 使用 Gemini 处理图像视图的聊天消息
+  // 完全依赖 Gemini 的自主判断，不做任何干预
+  // Gemini 可以自由地聊天、询问、确认，也可以决定何时生成图像
+  const handleImageChatMessage = useCallback(async (userPrompt: string, userMessageId: string) => {
+    const trimmedPrompt = userPrompt.trim()
+    
+    if (!trimmedPrompt) {
+      setIsGeneratingImage(false)
+      return
+    }
+    
+    try {
+      // 构建对话上下文
+      const conversationContext = imageChatMessages
+        .filter((msg) => msg.sender !== 'system')
+        .slice(-10) // 取最近10条消息作为上下文，让 Gemini 有更多上下文理解
+        .map((msg) => `${msg.sender === 'user' ? '用户' : '助手'}: ${msg.text}`)
+        .join('\n')
+      
+      // 完全自由的系统提示，让 Gemini 100% 自主决策，不做任何格式要求
+      const systemPrompt = `你是一个智能助手，可以帮助用户生成图像或进行普通聊天。
+
+你的能力：
+- 你可以与用户进行完全自然的对话
+- 如果用户想要生成图像，你可以：
+  * 询问用户想要生成什么样的图像
+  * 确认用户的图像需求
+  * 直接为用户生成图像
+  * 或者做任何你认为合适的回应
+- 如果用户只是在聊天、提问、打招呼等，你可以作为普通聊天助手回复
+- 你完全自主决定如何回复用户，包括是否要生成图像、何时生成图像、如何与用户交流等
+
+当前对话上下文：
+${conversationContext || '(无)'}
+
+用户输入："${trimmedPrompt}"
+
+请根据你的判断自由回复，完全按照你的理解来处理：`
+
+      const response = await fetch('/api/ai/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          prompt: systemPrompt,
+          stream: false, // 不使用流式响应，因为需要完整判断
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('API 调用失败')
+      }
+
+      const data = await response.json()
+      const geminiReply = data?.text?.trim() || ''
+      
+      // 完全信任 Gemini 的回复，直接显示
+      setIsGeneratingImage(false)
+      
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        sender: 'assistant',
+        text: geminiReply || '抱歉，我无法理解您的意思。',
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+      }
+      
+      setImageChatMessages((prev) => [...prev, assistantMessage])
+      
+      // 检查 Gemini 的回复中是否明确表达了要生成图像的意图
+      // 使用自然语言识别，而不是格式要求
+      // 只有当 Gemini 明确表示"我现在为您生成"、"正在生成"等，并且有图像描述时，才调用图像生成
+      const generateIntentPatterns = [
+        /(?:我现在|正在|马上|立即|现在)(?:为您|为你|为您们|为你)?(?:生成|创建|制作|画)(?:一张|一幅|一个)?(?:图像|图片|图|画)/i,
+        /(?:好的|好的，)(?:我现在|马上|立即)(?:为您|为你)?(?:生成|创建|制作|画)/i,
+        /(?:让我|我来)(?:为您|为你)?(?:生成|创建|制作|画)/i,
+      ]
+      
+      const hasGenerateIntent = generateIntentPatterns.some(pattern => pattern.test(geminiReply))
+      
+      // 尝试从 Gemini 的回复中提取图像描述
+      // 如果 Gemini 明确表达了生成意图，尝试提取描述
+      if (hasGenerateIntent) {
+        // 尝试提取图像描述（可能在"生成"、"创建"等词后面）
+        const descriptionMatch = geminiReply.match(/(?:生成|创建|制作|画)(?:一张|一幅|一个)?(?:图像|图片|图|画)[：:，,，]?\s*(.+?)(?:。|！|!|$)/i)
+        if (descriptionMatch && descriptionMatch[1]) {
+          const imagePrompt = descriptionMatch[1].trim()
+          if (imagePrompt.length > 3) {
+            console.log('[Image Chat] 从 Gemini 回复中识别到生成图像意图，描述:', imagePrompt)
+            // 异步调用图像生成，不阻塞回复显示
+            setTimeout(() => {
+              handleImageGenerationDirect(imagePrompt, userMessageId)
+            }, 500)
+            return
+          }
+        }
+        
+        // 如果没有提取到描述，但用户原始输入中有图像相关描述，使用用户输入
+        const userInputHasImageDesc = trimmedPrompt.length > 5 && (
+          trimmedPrompt.includes('生成') || 
+          trimmedPrompt.includes('画') || 
+          trimmedPrompt.includes('创建') ||
+          trimmedPrompt.includes('制作') ||
+          trimmedPrompt.includes('图像') ||
+          trimmedPrompt.includes('图片')
+        )
+        
+        if (userInputHasImageDesc) {
+          console.log('[Image Chat] Gemini 表达了生成意图，使用用户原始输入作为描述:', trimmedPrompt)
+          setTimeout(() => {
+            handleImageGenerationDirect(trimmedPrompt, userMessageId)
+          }, 500)
+        }
+      }
+    } catch (error) {
+      console.error('处理图像聊天消息失败:', error)
+      setIsGeneratingImage(false)
+      
+      const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        sender: 'assistant',
+        text: '抱歉，处理您的消息时出现了问题。请稍后再试。',
+        timestamp: new Date().toISOString(),
+        status: 'sent',
+      }
+      
+      setImageChatMessages((prev) => [...prev, assistantMessage])
+    }
+  }, [imageChatMessages, handleImageGenerationDirect])
+
+  // 图像生成处理函数（用于 image view，保留用于其他地方调用）
+  // 注意：这个函数现在已不再使用，因为所有消息都通过 handleImageChatMessage 处理
+  // 保留此函数以防其他地方有调用
+  const handleImageGeneration = useCallback(async (userPrompt: string) => {
+    if (!userPrompt.trim() || isGeneratingImage) {
+      return
+    }
+
+    // 立即添加用户消息
+    const timestamp = new Date().toISOString()
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: userPrompt.trim(),
+      timestamp,
+      status: 'sent',
+    }
+
+    setImageChatMessages((prev) => [...prev, userMessage])
+    setIsGeneratingImage(true)
+
+    // 使用新的 Gemini 处理逻辑
+    await handleImageChatMessage(userPrompt.trim(), userMessage.id)
+  }, [isGeneratingImage, handleImageChatMessage])
 
   // 自动滚动到底部
   useEffect(() => {
@@ -1177,6 +1735,7 @@ export default function GenerateLandingPage() {
           width: '100%',
           maxWidth: '800px',
           margin: '0 auto',
+          transform: 'translateX(20px)',
           padding: '24px 28px',
           overflowY: 'auto',
           display: 'flex',
@@ -1189,43 +1748,26 @@ export default function GenerateLandingPage() {
         {imageChatMessages.map((message) => {
           const isUser = message.sender === 'user'
           return (
-            <div key={message.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div
+              key={message.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                alignItems: isUser ? 'flex-end' : 'flex-start',
+                flexDirection: 'column',
+                gap: '6px',
+                marginLeft: isUser ? '-113px' : '-33px',
+              }}
+            >
               <div
                 style={{
+                  maxWidth: isUser ? '72%' : '100%',
                   display: 'flex',
-                  justifyContent: isUser ? 'flex-end' : 'flex-start',
-                  alignItems: 'flex-start',
+                  flexDirection: 'column',
                   gap: '8px',
+                  alignItems: isUser ? 'flex-end' : 'flex-start',
                 }}
               >
-                {!isUser && (
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '16px',
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      flexShrink: 0,
-                    }}
-                  >
-                    AI
-                  </div>
-                )}
-                <div
-                  style={{
-                    maxWidth: '75%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    alignItems: isUser ? 'flex-end' : 'flex-start',
-                  }}
-                >
                   {message.text && (
                     <div
                       style={{
@@ -1233,7 +1775,7 @@ export default function GenerateLandingPage() {
                         borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                         backgroundColor: 'transparent',
                         color: '#111827',
-                        fontSize: '14px',
+                        fontSize: '15px',
                         lineHeight: 1.7,
                         boxShadow: 'none',
                         border: 'none',
@@ -1250,7 +1792,8 @@ export default function GenerateLandingPage() {
                         display: 'grid',
                         gridTemplateColumns: message.images.length > 1 ? 'repeat(2, 1fr)' : '1fr',
                         gap: '12px',
-                        maxWidth: '100%',
+                        maxWidth: isUser ? '72%' : '100%',
+                        marginTop: message.text ? '8px' : '0',
                       }}
                     >
                       {message.images.map((imageSrc, idx) => (
@@ -1280,45 +1823,12 @@ export default function GenerateLandingPage() {
                       ))}
                     </div>
                   )}
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      color: '#9CA3AF',
-                      textAlign: isUser ? 'right' : 'left',
-                      padding: '0 6px',
-                    }}
-                  >
-                    {message.status === 'sending'
-                      ? '正在生成…'
-                      : new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                    {message.status === 'failed' ? ' · 生成失败' : ''}
-                  </span>
                 </div>
-                {isUser && (
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '16px',
-                      backgroundColor: '#d1d5db',
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      flexShrink: 0,
-                    }}
-                  >
-                    我
-                  </div>
-                )}
-              </div>
             </div>
           )
         })}
       </div>
-      <div style={{ height: '24px', width: '100%', flexShrink: 0 }} />
+      <div style={{ height: '12px', width: '100%', flexShrink: 0 }} />
       <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', flexShrink: 0, paddingBottom: '24px' }}>
         <div
           style={{
@@ -1330,6 +1840,7 @@ export default function GenerateLandingPage() {
             gap: '12px',
             background: '#ffffff',
             boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
+            marginTop: '-12px',
           }}
         >
           <button
@@ -1357,8 +1868,10 @@ export default function GenerateLandingPage() {
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
-                void handleImageGeneration(prompt)
-                setPrompt('')
+                // 检查是否正在处理，避免重复提交
+                if (!isGeneratingImage && !isSendingMessage && prompt.trim()) {
+                  void handleSendMessage()
+                }
               }
             }}
             disabled={isGeneratingImage}
@@ -1371,11 +1884,8 @@ export default function GenerateLandingPage() {
             }}
           />
           <button
-            onClick={() => {
-              void handleImageGeneration(prompt)
-              setPrompt('')
-            }}
-            disabled={!prompt.trim() || isGeneratingImage}
+            onClick={() => void handleSendMessage()}
+            disabled={!prompt.trim() || isGeneratingImage || isSendingMessage}
             title={isVideoView ? "生成视频" : "生成图像"}
             style={{
               width: '36px',
@@ -1604,41 +2114,97 @@ export default function GenerateLandingPage() {
                 marginLeft: isUser ? '-113px' : '-33px',
               }}
             >
-              <div
-                style={{
-                  maxWidth: isUser ? '72%' : '100%',
-                  padding: '12px 18px',
-                  borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                  backgroundColor: 'transparent',
-                  color: '#111827',
-                  fontSize: '15px',
-                  lineHeight: 1.7,
-                  boxShadow: 'none',
-                  border: 'none',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {message.text}
-              </div>
-              <span
-                style={{
-                  fontSize: '11px',
-                  color: '#9CA3AF',
-                  textAlign: 'left',
-                  padding: '0 0 0 6px',
-                }}
-              >
-                {message.status === 'sending'
-                  ? 'Grok 正在思考…'
-                  : new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                {message.status === 'failed' ? ' · 发送失败' : ''}
-              </span>
+              {message.text && (
+                <div
+                  style={{
+                    maxWidth: isUser ? '72%' : '100%',
+                    padding: '12px 18px',
+                    borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                    backgroundColor: 'transparent',
+                    color: '#111827',
+                    fontSize: '15px',
+                    lineHeight: 1.7,
+                    boxShadow: 'none',
+                    border: 'none',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {message.text}
+                </div>
+              )}
+              {message.images && message.images.length > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: message.images.length > 1 ? 'repeat(2, 1fr)' : '1fr',
+                    gap: '12px',
+                    maxWidth: isUser ? '72%' : '100%',
+                    marginTop: message.text ? '8px' : '0',
+                  }}
+                >
+                  {message.images.map((imageSrc, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        border: '1px solid #e5e7eb',
+                        backgroundColor: '#f3f4f6',
+                        position: 'relative',
+                        aspectRatio: '1',
+                      }}
+                    >
+                      <img
+                        src={imageSrc}
+                        alt={`Generated image ${idx + 1}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          display: 'flex',
+                          gap: '4px',
+                        }}
+                      >
+                        <button
+                          onClick={() => {
+                            const link = document.createElement('a')
+                            link.href = imageSrc
+                            link.download = `image-${Date.now()}-${idx + 1}.png`
+                            link.click()
+                          }}
+                          style={{
+                            padding: '6px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                            color: '#ffffff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          title="下载图像"
+                        >
+                          <UploadCloud style={{ width: '14px', height: '14px' }} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}
       </div>
-      <div style={{ height: '24px', width: '100%', flexShrink: 0 }} />
+      <div style={{ height: '12px', width: '100%', flexShrink: 0 }} />
       <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', flexShrink: 0, paddingBottom: '24px' }}>
         <div
           style={{
@@ -1650,6 +2216,7 @@ export default function GenerateLandingPage() {
             gap: '12px',
             background: '#ffffff',
             boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
+            marginTop: '-12px',
           }}
         >
           <button
@@ -1671,7 +2238,7 @@ export default function GenerateLandingPage() {
           </button>
           <input
             type="text"
-            placeholder="How can Grok help?"
+            placeholder={isImageView ? "描述你想要生成的图像..." : "How can Grok help?"}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
@@ -1690,7 +2257,7 @@ export default function GenerateLandingPage() {
           />
           <button
             onClick={() => void handleSendMessage()}
-            disabled={!prompt.trim() || isSendingMessage}
+            disabled={!prompt.trim() || isSendingMessage || isGeneratingImage}
             title="发送消息"
             style={{
               width: '36px',
@@ -1940,11 +2507,8 @@ export default function GenerateLandingPage() {
           if (event.target === navRef.current) {
             if (navExpanded) {
               setNavExpanded(false)
-              setHistoryOverlayOpen(false)
             } else {
               setNavExpanded(true)
-              setHistoryOverlayOpen(false)
-              setHistoryExpanded(false)
             }
           }
         }}
@@ -1969,10 +2533,8 @@ export default function GenerateLandingPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: navExpanded ? '12px' : '16px', alignItems: navExpanded ? 'stretch' : 'center', paddingTop: navExpanded ? '0' : '20px' }}>
           {sidebarIcons.map((item, index) => {
             const Icon = item.icon
-            const isHistory = item.action === 'history'
             const isSearch = item.action === 'search'
             const isHovered = hoveredSidebarIndex === index
-            const isHistoryActive = isHistory && historyExpanded && navExpanded
             const shouldShowIcon = !(navExpanded && item.hideIconWhenExpanded)
             const expandedLabelJustify = shouldShowIcon ? 'flex-start' : 'center'
             const defaultIconElement = <Icon style={{ width: '18px', height: '18px' }} />
@@ -2024,7 +2586,7 @@ export default function GenerateLandingPage() {
               height: '32px',
               borderRadius: '16px',
               border: 'none',
-              backgroundColor: isHistoryActive || isHovered ? '#F3F4F6' : 'transparent',
+              backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
               color: '#1f2937',
               cursor: 'pointer',
               display: 'flex',
@@ -2043,7 +2605,7 @@ export default function GenerateLandingPage() {
               padding: '10px 12px',
               borderRadius: '12px',
               border: 'none',
-              backgroundColor: isHistoryActive || isHovered ? '#F3F4F6' : 'transparent',
+              backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
               color: '#1f2937',
               cursor: 'pointer',
               textDecoration: 'none',
@@ -2055,137 +2617,15 @@ export default function GenerateLandingPage() {
               userSelect: 'none',
             } as const
 
-            if (isHistory) {
-              return (
-                <div key={item.label} style={{ display: 'flex', flexDirection: 'column', gap: navExpanded ? '6px' : '12px' }}>
-                  <button
-                    title={item.label}
-                    onMouseEnter={() => setHoveredSidebarIndex(index)}
-                    onMouseLeave={() => setHoveredSidebarIndex(null)}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (!navExpanded) {
-                        setHistoryOverlayOpen((prev) => !prev)
-                        return
-                      }
-                      setHistoryExpanded((prev) => !prev)
-                    }}
-                    style={navExpanded ? expandedStyle : collapsedStyle}
-                  >
-                    {shouldShowIcon && iconElement}
-                    <span
-                      style={{
-                        opacity: navExpanded ? 1 : 0,
-                        maxWidth: navExpanded ? '140px' : '0',
-                        transform: navExpanded ? 'translateX(0)' : 'translateX(-8px)',
-                        transition: 'opacity 0.24s ease, max-width 0.24s ease, transform 0.24s ease',
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        fontSize: navExpanded && item.hideIconWhenExpanded ? '15px' : '14px',
-                        fontWeight: navExpanded && item.hideIconWhenExpanded ? 700 : 600,
-                        fontFamily: navExpanded && item.hideIconWhenExpanded ? '"Roboto", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' : 'inherit',
-                        letterSpacing: navExpanded && item.hideIconWhenExpanded ? '0.08em' : undefined,
-                        textAlign: shouldShowIcon ? 'left' : 'center',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {navExpanded && item.expandedLabel ? item.expandedLabel : item.label}
-                    </span>
-                    {navExpanded && (
-                      <span
-                        style={{
-                          marginLeft: 'auto',
-                          fontSize: '12px',
-                          color: '#9ca3af',
-                          transition: 'opacity 0.24s ease',
-                          opacity: navExpanded ? 1 : 0,
-                        }}
-                      >
-                        {historyExpanded ? '收起' : '展开'}
-                      </span>
-                    )}
-                  </button>
-                  {navExpanded && historyExpanded && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        marginLeft: '8px',
-                        opacity: historyListVisible ? 1 : 0,
-                        transition: 'opacity 0.2s ease',
-                        pointerEvents: historyListVisible ? 'auto' : 'none',
-                      }}
-                    >
-                      {flatHistory.slice(0, 10).map((historyItem) => {
-                        const isActiveHistory = historyItem.id === activeHistoryId
-                        const isHoveredHistory = historyItem.id === hoveredHistoryId
-                        return (
-                          <button
-                            key={historyItem.id}
-                            onClick={() => setActiveHistoryId(historyItem.id)}
-                            onMouseEnter={() => setHoveredHistoryId(historyItem.id)}
-                            onMouseLeave={() => setHoveredHistoryId(null)}
-                            style={{
-                              width: '100%',
-                              textAlign: 'left',
-                              border: 'none',
-                              backgroundColor: isActiveHistory ? '#F3F4F6' : isHoveredHistory ? '#F9FAFB' : 'transparent',
-                              padding: '2px 6px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '2px',
-                              borderRadius: '6px',
-                              transition: 'background-color 0.2s ease',
-                            }}
-                          >
-                            <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>{historyItem.section}</span>
-                            <span
-                              style={{
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                color: '#111827',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {historyItem.title}
-                            </span>
-                          </button>
-                        )
-                      })}
-                      <button
-                        style={{
-                          alignSelf: 'flex-start',
-                          fontSize: '12px',
-                          color: '#1A73E8',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: 0,
-                        }}
-                      >
-                        查看全部
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            }
-
             if (isSearch) {
               return (
-                <button
-                  key={item.label}
-                  title={item.label}
-                  onMouseEnter={() => setHoveredSidebarIndex(index)}
-                  onMouseLeave={() => setHoveredSidebarIndex(null)}
+                <div key={item.label} style={{ position: 'relative' }}>
+                  <button
+                    onMouseEnter={() => setHoveredSidebarIndex(index)}
+                    onMouseLeave={() => setHoveredSidebarIndex(null)}
                   onClick={(event) => {
                     event.stopPropagation()
                     setNavExpanded(false)
-                    setHistoryOverlayOpen(false)
                     setSearchOverlayOpen(true)
                     setActiveSearchId(flatSearchItems[0]?.id ?? null)
                   }}
@@ -2207,24 +2647,46 @@ export default function GenerateLandingPage() {
                     {item.label}
                   </span>
                 </button>
+                {!navExpanded && isHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 'calc(100% + 12px)',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      backgroundColor: '#f9fafb',
+                      color: '#111827',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      whiteSpace: 'nowrap',
+                      zIndex: 1000,
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid #e5e7eb',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                )}
+                </div>
               )
             }
 
             if (item.href) {
               return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  title={item.label}
-                  onMouseEnter={() => setHoveredSidebarIndex(index)}
-                  onMouseLeave={() => setHoveredSidebarIndex(null)}
+                <div key={item.label} style={{ position: 'relative' }}>
+                  <Link
+                    href={item.href}
+                    onMouseEnter={() => setHoveredSidebarIndex(index)}
+                    onMouseLeave={() => setHoveredSidebarIndex(null)}
                   onClick={(event) => {
                     event.stopPropagation()
                     if (!navExpanded) {
                       return
                     }
                     setNavExpanded(false)
-                    setHistoryOverlayOpen(false)
                   }}
                   style={navExpanded ? expandedStyle : collapsedStyle}
                 >
@@ -2244,6 +2706,30 @@ export default function GenerateLandingPage() {
                     {navExpanded && item.expandedLabel ? item.expandedLabel : item.label}
                   </span>
                 </Link>
+                {!navExpanded && isHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 'calc(100% + 12px)',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      backgroundColor: '#f9fafb',
+                      color: '#111827',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      whiteSpace: 'nowrap',
+                      zIndex: 1000,
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid #e5e7eb',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                )}
+                </div>
               )
             }
 
@@ -2366,8 +2852,7 @@ export default function GenerateLandingPage() {
                     <button
                       onClick={() => {
                         setUserMenuOpen(false)
-                        logout()
-                        router.push('/')
+                        void logout()
                       }}
                       style={{
                         display: 'flex',
@@ -2389,123 +2874,20 @@ export default function GenerateLandingPage() {
                 )}
               </div>
             </div>
-          ) : (
-            <Link
-              href="/?authModal=1"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '36px',
-                height: '36px',
-                borderRadius: '18px',
-                border: 'none',
-                backgroundColor: '#D1431F',
-                color: '#ffffff',
-                textDecoration: 'none',
-                fontSize: '15px',
-                fontWeight: 600,
-                alignSelf: navExpanded ? 'flex-start' : 'center',
-                textTransform: 'uppercase',
-                boxShadow: '0 4px 12px rgba(209, 67, 31, 0.25)',
-              }}
-            >
-              登
-            </Link>
-          )}
+          ) : null}
         </div>
       </aside>
-
-      {historyOverlayOpen && !navExpanded && (
-        <div
-          onClick={() => setHistoryOverlayOpen(false)}
-          style={{
-            position: 'fixed',
-            top: '64px',
-            left: '56px',
-            width: '300px',
-            height: 'calc(100vh - 64px)',
-            backgroundColor: '#ffffff',
-            boxShadow: '12px 0 32px rgba(15, 23, 42, 0.18)',
-            borderRight: '1px solid #e5e7eb',
-            padding: '24px 20px',
-            zIndex: 950,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>历史记录</div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              overflowY: 'auto',
-              flex: 1,
-            }}
-          >
-            {flatHistory.slice(0, 10).map((historyItem) => (
-              <button
-                key={historyItem.id}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setActiveHistoryId(historyItem.id)
-                  setHistoryOverlayOpen(false)
-                }}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  border: 'none',
-                  backgroundColor: activeHistoryId === historyItem.id ? '#F3F4F6' : 'transparent',
-                  padding: '6px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '2px',
-                  transition: 'background-color 0.2s ease',
-                }}
-                onMouseEnter={() => setHoveredHistoryId(historyItem.id)}
-                onMouseLeave={() => setHoveredHistoryId(null)}
-              >
-                <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>{historyItem.section}</span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {historyItem.title}
-                </span>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={(event) => {
-              event.stopPropagation()
-              setHistoryOverlayOpen(false)
-            }}
-            style={{
-              alignSelf: 'flex-start',
-              fontSize: '12px',
-              color: '#1A73E8',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            查看全部
-          </button>
-        </div>
-      )}
 
       {searchOverlayOpen && (
         <div
           onClick={() => setSearchOverlayOpen(false)}
           style={{
             position: 'fixed',
-            top: '64px',
+            top: 0,
             left: 0,
             width: '100vw',
-            height: 'calc(100vh - 64px)',
-            backgroundColor: 'rgba(15, 23, 42, 0.35)',
+            height: '100vh',
+            backgroundColor: 'rgba(255, 255, 255, 0.5)',
             backdropFilter: 'blur(8px)',
             zIndex: 960,
             display: 'flex',
@@ -2517,10 +2899,10 @@ export default function GenerateLandingPage() {
           <div
             onClick={(event) => event.stopPropagation()}
             style={{
-              width: 'min(1280px, calc(100vw - 24px))',
-              height: 'min(1280px, calc(100vh - 48px))',
+              width: 'min(1430px, calc(100vw + 126px))',
+              height: 'min(1280px, calc(100vh - 148px))',
               backgroundColor: '#ffffff',
-              borderRadius: '8px',
+              borderRadius: '16px',
               boxShadow: '0 28px 80px rgba(15, 23, 42, 0.2)',
               display: 'flex',
               flexDirection: 'column',
@@ -2554,56 +2936,183 @@ export default function GenerateLandingPage() {
             <div style={{ flex: 1, display: 'flex' }}>
               <div
                 style={{
-                  width: '320px',
+                  width: '430px',
                   borderRight: '1px solid #e5e7eb',
                   padding: '12px 14px 18px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '1px',
+                  gap: '8px',
                   overflowY: 'auto',
                 }}
               >
                 {filteredSearchItems.length ? (
                   filteredSearchItems.map((item) => {
                     const isActive = item.id === activeSearchId
+                    const isHovered = hoveredSearchId === item.id
+                    const isEditing = editingSearchId === item.id
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        onClick={() => setActiveSearchId(item.id)}
                         style={{
                           width: '100%',
-                          border: 'none',
-                          textAlign: 'left',
                           borderRadius: '6px',
-                          padding: '4px 6px',
-                          backgroundColor: hoveredSearchId === item.id ? '#F3F4F6' : 'transparent',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0px',
+                          padding: '14px 6px',
+                          backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
                           transition: 'background-color 0.2s ease',
+                          position: 'relative',
                         }}
                         onMouseEnter={() => setHoveredSearchId(item.id)}
-                        onMouseLeave={() => setHoveredSearchId(null)}
+                        onMouseLeave={() => {
+                          if (!isEditing) {
+                            setHoveredSearchId(null)
+                          }
+                        }}
                       >
-                        <span style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          {item.section}
-                        </span>
-                        <span
+                        <button
+                          onClick={() => setActiveSearchId(item.id)}
                           style={{
+                            width: '100%',
+                            border: 'none',
+                            textAlign: 'left',
+                            backgroundColor: 'transparent',
+                            cursor: 'pointer',
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '8px',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            color: '#111827',
+                            flexDirection: 'column',
+                            gap: '0px',
+                            padding: 0,
                           }}
                         >
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</span>
-                          {item.subtitle && <span style={{ fontSize: '12px', fontWeight: 400, color: '#6b7280', flexShrink: 0 }}>{item.subtitle}</span>}
-                        </span>
-                      </button>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editSearchTitle}
+                              onChange={(e) => setEditSearchTitle(e.target.value)}
+                              onBlur={() => {
+                                if (editSearchTitle.trim()) {
+                                  handleRenameSearchItem(item.id, editSearchTitle)
+                                } else {
+                                  setEditingSearchId(null)
+                                  setEditSearchTitle('')
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  if (editSearchTitle.trim()) {
+                                    handleRenameSearchItem(item.id, editSearchTitle)
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setEditingSearchId(null)
+                                  setEditSearchTitle('')
+                                }
+                              }}
+                              autoFocus
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: '#111827',
+                                border: '1px solid #1A73E8',
+                                borderRadius: '4px',
+                                padding: '2px 6px',
+                                outline: 'none',
+                                width: '100%',
+                              }}
+                            />
+                          ) : (
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: '#111827',
+                              }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.title}</span>
+                              {item.subtitle && <span style={{ fontSize: '12px', fontWeight: 400, color: '#6b7280', flexShrink: 0 }}>{item.subtitle}</span>}
+                            </span>
+                          )}
+                        </button>
+                        {isHovered && !isEditing && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '16px',
+                              backgroundColor: '#F3F4F6',
+                              borderRadius: '4px',
+                              padding: '2px 4px',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleStartRename(item.id, item.title)
+                              }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '3px',
+                                color: '#6b7280',
+                                minWidth: '32px',
+                                minHeight: '32px',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#e5e7eb'
+                                e.currentTarget.style.color = '#111827'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent'
+                                e.currentTarget.style.color = '#6b7280'
+                              }}
+                              title="重命名"
+                            >
+                              <Pencil style={{ width: '18px', height: '18px' }} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteSearchItem(item.id)
+                              }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '3px',
+                                color: '#6b7280',
+                                minWidth: '32px',
+                                minHeight: '32px',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#fee2e2'
+                                e.currentTarget.style.color = '#dc2626'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent'
+                                e.currentTarget.style.color = '#6b7280'
+                              }}
+                              title="删除"
+                            >
+                              <Trash2 style={{ width: '18px', height: '18px' }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )
                   })
                 ) : (
@@ -2623,10 +3132,11 @@ export default function GenerateLandingPage() {
               >
                 {previewSearchItem ? (
                   <div style={{ width: '100%', maxWidth: '520px', display: 'flex', flexDirection: 'column', gap: '12px', color: '#111827' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#9ca3af' }}>
-                      <span style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}>{previewSearchItem.section}</span>
-                      {previewSearchItem.subtitle && <span style={{ color: '#6b7280' }}>{previewSearchItem.subtitle}</span>}
-                    </div>
+                    {previewSearchItem.subtitle && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#9ca3af' }}>
+                        <span style={{ color: '#6b7280' }}>{previewSearchItem.subtitle}</span>
+                      </div>
+                    )}
                     <h3 style={{ fontSize: '20px', fontWeight: 700, lineHeight: 1.4 }}>{previewSearchItem.title}</h3>
                     <div
                       style={{

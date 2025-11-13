@@ -398,7 +398,7 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
         </form>
 
         {mode === 'login' && (
-          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#6b7280' }}>
+          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#6b7280', transform: 'translateY(-4px)' }}>
             <button
               type="button"
               onClick={() => {
