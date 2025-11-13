@@ -11,7 +11,7 @@ const PROXY_URL = process.env.GEMINI_PROXY_URL ||
                   'http://34.87.103.25:3128'; // 默认使用新加坡IP
 
 const API_KEY = process.env.GOOGLE_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const MODEL = process.env.GOOGLE_GEMINI_MODEL || 'gemini-1.5-flash';
+const MODEL = process.env.GOOGLE_GEMINI_MODEL || 'gemini-2.5-flash';
 const API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 async function testGeminiAPI() {
@@ -57,7 +57,7 @@ async function testGeminiAPI() {
       },
       body: JSON.stringify(requestBody),
       dispatcher: agent,
-      signal: AbortSignal.timeout(30000), // 30秒超时
+      signal: AbortSignal.timeout(60000), // 60秒超时
     });
     const endTime = Date.now();
 

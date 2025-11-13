@@ -252,6 +252,10 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
                 onClick={() => {
                   setLoginMethod('code')
                   setPassword('')
+                  // 如果当前输入的不是有效的手机号，清空它
+                  if (phone && !PHONE_REGEX.test(phone)) {
+                    setPhone('')
+                  }
                 }}
                 style={{
                   flex: 1,
@@ -462,9 +466,9 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
         )}
         <div style={{ marginTop: '4px', textAlign: 'center', fontSize: '12px', color: '#6b7280', display: 'flex', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <span>继续操作即表示您同意</span>
-          <a href="/terms" style={{ color: '#1A73E8', textDecoration: 'none' }}>服务协议</a>
+          <a href="/terms" style={{ color: '#1A73E8', textDecoration: 'none' }}>《服务协议》</a>
           <span>和</span>
-          <a href="/privacy" style={{ color: '#1A73E8', textDecoration: 'none' }}>隐私政策</a>
+          <a href="/privacy" style={{ color: '#1A73E8', textDecoration: 'none' }}>《隐私政策》</a>
         </div>
       </div>
     </div>

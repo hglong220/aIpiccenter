@@ -30,7 +30,7 @@ import {
   Smartphone,
   Shield,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -248,7 +248,7 @@ export default function GenerateLandingPage() {
   const { user, logout } = useAuth()
 
   const [prompt, setPrompt] = useState('')
-  const [selectedModel, setSelectedModel] = useState<ModelOption>(isImageView ? '图片' : isVideoView ? '视频' : '专家模式')
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(isImageView ? '图片' : isVideoView ? '视频' : '自动模式')
   const [selectedAspect, setSelectedAspect] = useState<AspectOption['id']>('portrait')
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [hoveredModel, setHoveredModel] = useState<ModelOption | null>(null)
@@ -278,18 +278,105 @@ export default function GenerateLandingPage() {
     text: string
     timestamp: string
     status: 'sending' | 'sent' | 'failed'
+    images?: string[] // 支持图像消息
   }
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: '你好，我是 Grok 聊天助手，很高兴为你提供帮助。',
-      timestamp: new Date().toISOString(),
-      status: 'sent',
-    },
-  ])
+  
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [imageChatMessages, setImageChatMessages] = useState<ChatMessage[]>([])
+  
+  // 标记是否已加载，防止初始加载时保存
+  const isLoadedRef = useRef(false)
+  const isImageLoadedRef = useRef(false)
+  
+  // 从 localStorage 加载聊天记录（仅在客户端）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('chatMessages')
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // 过滤掉发送中的消息和欢迎消息
+          const filtered = parsed.filter(
+            (msg: ChatMessage) => msg.status !== 'sending' && msg.id !== 'welcome'
+          )
+          if (filtered.length > 0) {
+            setChatMessages(filtered)
+            isLoadedRef.current = true
+            return
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load chat messages from localStorage:', e)
+      }
+      isLoadedRef.current = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('imageChatMessages')
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // 过滤掉发送中的消息和欢迎消息
+          const filtered = parsed.filter(
+            (msg: ChatMessage) => msg.status !== 'sending' && msg.id !== 'welcome-image'
+          )
+          if (filtered.length > 0) {
+            setImageChatMessages(filtered)
+            isImageLoadedRef.current = true
+            return
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load image chat messages from localStorage:', e)
+      }
+      isImageLoadedRef.current = true
+    }
+  }, [])
+  
+  // 保存聊天记录到 localStorage（仅在加载完成后）
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isLoadedRef.current && chatMessages.length > 0) {
+      try {
+        // 过滤掉发送中的消息和欢迎消息再保存
+        const toSave = chatMessages.filter(
+          (msg) => msg.status !== 'sending' && msg.id !== 'welcome'
+        )
+        if (toSave.length > 0) {
+          localStorage.setItem('chatMessages', JSON.stringify(toSave))
+        } else {
+          // 如果没有有效消息，清除 localStorage
+          localStorage.removeItem('chatMessages')
+        }
+      } catch (e) {
+        console.error('Failed to save chat messages to localStorage:', e)
+      }
+    }
+  }, [chatMessages])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isImageLoadedRef.current && imageChatMessages.length > 0) {
+      try {
+        // 过滤掉发送中的消息和欢迎消息再保存
+        const toSave = imageChatMessages.filter(
+          (msg) => msg.status !== 'sending' && msg.id !== 'welcome-image'
+        )
+        if (toSave.length > 0) {
+          localStorage.setItem('imageChatMessages', JSON.stringify(toSave))
+        } else {
+          // 如果没有有效消息，清除 localStorage
+          localStorage.removeItem('imageChatMessages')
+        }
+      } catch (e) {
+        console.error('Failed to save image chat messages to localStorage:', e)
+      }
+    }
+  }, [imageChatMessages])
   const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const imageChatContainerRef = useRef<HTMLDivElement>(null)
   const isChatView = view === 'chat'
   
   const modelOptions: ModelOption[] = isImageView ? ['图片'] : isVideoView ? ['视频'] : ['自动模式', '快速模式', '专家模式']
@@ -360,7 +447,7 @@ export default function GenerateLandingPage() {
   }, [modelMenuOpen])
 
   useEffect(() => {
-    setSelectedModel(isImageView ? '图片' : isVideoView ? '视频' : '专家模式')
+    setSelectedModel(isImageView ? '图片' : isVideoView ? '视频' : '自动模式')
     if (isImageView || isVideoView) {
       setSelectedAspect('portrait')
     }
@@ -961,6 +1048,105 @@ export default function GenerateLandingPage() {
     }
   }
 
+  // 图像生成处理函数（用于 image view）
+  const handleImageGeneration = useCallback(async (userPrompt: string) => {
+    if (!userPrompt.trim() || isGeneratingImage) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: userPrompt.trim(),
+      timestamp,
+      status: 'sent',
+    }
+
+    const placeholderId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    const placeholderMessage: ChatMessage = {
+      id: placeholderId,
+      sender: 'assistant',
+      text: '正在生成图像…',
+      timestamp,
+      status: 'sending',
+    }
+
+    setImageChatMessages((prev) => [...prev, userMessage, placeholderMessage])
+    setIsGeneratingImage(true)
+
+    try {
+      // 根据选择的宽高比确定 aspectRatio
+      const aspectRatioMap: Record<AspectOption['id'], '1:1' | '3:4' | '4:3' | '9:16' | '16:9'> = {
+        square: '1:1',
+        portrait: '3:4',
+        landscape: '4:3',
+      }
+      
+      // 如果用户想要其他比例，可以通过对话指定，这里使用默认的
+
+      const response = await fetch('/api/image-generator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          prompt: userPrompt.trim(),
+          aspectRatio: aspectRatioMap[selectedAspect] || '1:1',
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data.success) {
+        const errorMessage = data?.error || '图像生成失败，请稍后再试。'
+        setImageChatMessages((prev) =>
+          prev.map((message) =>
+            message.id === placeholderId
+              ? {
+                  ...message,
+                  text: errorMessage,
+                  status: 'failed',
+                  timestamp: new Date().toISOString(),
+                }
+              : message,
+          ),
+        )
+        return
+      }
+
+      // 更新消息，显示生成的图像
+      setImageChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId
+            ? {
+                ...message,
+                text: `已为你生成图像：${userPrompt.trim()}`,
+                images: data.data?.images || [],
+                status: 'sent',
+                timestamp: new Date().toISOString(),
+              }
+            : message,
+        ),
+      )
+    } catch (error) {
+      console.error('生成图像失败', error)
+      setImageChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === placeholderId
+            ? {
+                ...message,
+                text: '生成失败，请检查网络后重试。',
+                status: 'failed',
+                timestamp: new Date().toISOString(),
+              }
+            : message,
+        ),
+      )
+    } finally {
+      setIsGeneratingImage(false)
+    }
+  }, [isGeneratingImage, selectedAspect])
+
   // 自动滚动到底部
   useEffect(() => {
     if (isChatView && chatContainerRef.current) {
@@ -970,6 +1156,416 @@ export default function GenerateLandingPage() {
       })
     }
   }, [chatMessages, isChatView])
+
+  useEffect(() => {
+    if (isImageView && imageChatContainerRef.current) {
+      imageChatContainerRef.current.scrollTo({
+        top: imageChatContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    }
+  }, [imageChatMessages, isImageView])
+
+  // 渲染图像生成聊天视图
+  const renderImageView = () => (
+    <>
+      <div
+        ref={imageChatContainerRef}
+        className="chat-messages-container"
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: '800px',
+          margin: '0 auto',
+          padding: '24px 28px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '18px',
+          minHeight: 0,
+          height: '100%',
+        }}
+      >
+        {imageChatMessages.map((message) => {
+          const isUser = message.sender === 'user'
+          return (
+            <div key={message.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: isUser ? 'flex-end' : 'flex-start',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                }}
+              >
+                {!isUser && (
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '16px',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    AI
+                  </div>
+                )}
+                <div
+                  style={{
+                    maxWidth: '75%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    alignItems: isUser ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  {message.text && (
+                    <div
+                      style={{
+                        padding: '12px 18px',
+                        borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                        backgroundColor: 'transparent',
+                        color: '#111827',
+                        fontSize: '14px',
+                        lineHeight: 1.7,
+                        boxShadow: 'none',
+                        border: 'none',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {message.text}
+                    </div>
+                  )}
+                  {message.images && message.images.length > 0 && (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: message.images.length > 1 ? 'repeat(2, 1fr)' : '1fr',
+                        gap: '12px',
+                        maxWidth: '100%',
+                      }}
+                    >
+                      {message.images.map((imageSrc, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            border: '1px solid #e5e7eb',
+                            backgroundColor: '#f3f4f6',
+                            position: 'relative',
+                            aspectRatio: '1',
+                          }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imageSrc}
+                            alt={`Generated image ${idx + 1}`}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: '#9CA3AF',
+                      textAlign: isUser ? 'right' : 'left',
+                      padding: '0 6px',
+                    }}
+                  >
+                    {message.status === 'sending'
+                      ? '正在生成…'
+                      : new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    {message.status === 'failed' ? ' · 生成失败' : ''}
+                  </span>
+                </div>
+                {isUser && (
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '16px',
+                      backgroundColor: '#d1d5db',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    我
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ height: '24px', width: '100%', flexShrink: 0 }} />
+      <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto', flexShrink: 0, paddingBottom: '24px' }}>
+        <div
+          style={{
+            borderRadius: '26px',
+            border: '1px solid #e5e7eb',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '11px 16px',
+            gap: '12px',
+            background: '#ffffff',
+            boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <button
+            title="上传文件"
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '20px',
+              border: 'none',
+              backgroundColor: '#F3F4F6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#1F2937',
+              cursor: 'pointer',
+            }}
+          >
+            <UploadCloud style={{ width: '20px', height: '20px' }} />
+          </button>
+          <input
+            type="text"
+            placeholder={isVideoView ? "描述你想要生成的视频..." : "描述你想要生成的图像..."}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                void handleImageGeneration(prompt)
+                setPrompt('')
+              }
+            }}
+            disabled={isGeneratingImage}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: '16px',
+              color: '#111827',
+            }}
+          />
+          <button
+            onClick={() => {
+              void handleImageGeneration(prompt)
+              setPrompt('')
+            }}
+            disabled={!prompt.trim() || isGeneratingImage}
+            title={isVideoView ? "生成视频" : "生成图像"}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '18px',
+              border: 'none',
+              backgroundColor: '#F3F4F6',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#1F2937',
+              cursor: !prompt.trim() || isGeneratingImage ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Send style={{ width: '18px', height: '18px' }} />
+          </button>
+          <div style={{ position: 'relative' }} ref={modelMenuRef}>
+            <button
+              onClick={() => setModelMenuOpen((prev) => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                border: 'none',
+                borderRadius: '999px',
+                padding: '6px 14px',
+                background: '#ffffff',
+                color: '#111827',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {isVideoView ? (
+                <Video style={{ width: '16px', height: '16px' }} />
+              ) : (
+                <Images style={{ width: '16px', height: '16px' }} />
+              )}
+              <span style={{ fontSize: '13px', fontWeight: 600 }}>{isVideoView ? '视频' : '图片'}</span>
+              <ChevronRight
+                style={{
+                  width: '14px',
+                  height: '14px',
+                  transform: modelMenuOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                }}
+              />
+            </button>
+            {modelMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 8px)',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  padding: '8px 8px',
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  boxShadow: '0 16px 32px rgba(15, 23, 42, 0.12)',
+                  minWidth: '130px',
+                  minHeight: '84px',
+                  zIndex: 10,
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#4b5563', textAlign: 'center', marginBottom: '2px' }}>宽高比</span>
+                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '2px' }}>
+                    {aspectOptions.map((option) => {
+                      const isActive = selectedAspect === option.id
+                      const shape =
+                        option.id === 'portrait'
+                          ? { width: 14, height: 20 }
+                          : option.id === 'landscape'
+                            ? { width: 20, height: 14 }
+                            : { width: 18, height: 18 }
+                      return (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            setSelectedAspect(option.id)
+                            setModelMenuOpen(false)
+                          }}
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            border: isActive ? '1px solid #111827' : '1px solid #d1d5db',
+                            backgroundColor: isActive ? '#f3f4f6' : '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'block',
+                              width: `${shape.width}px`,
+                              height: `${shape.height}px`,
+                              borderRadius: '4px',
+                              border: isActive ? 'none' : '1px solid #9ca3af',
+                              backgroundColor: isActive ? '#111827' : '#ffffff',
+                            }}
+                          />
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {isVideoView ? (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', width: '100%' }}>
+                      <button
+                        onClick={() => {
+                          router.push('/generate?view=image')
+                          setModelMenuOpen(false)
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          width: '100%',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#ffffff',
+                          color: '#111827',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#f3f4f6'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#ffffff'
+                        }}
+                      >
+                        <Images style={{ width: '16px', height: '16px' }} />
+                        <span>图片</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', width: '100%' }}>
+                      <button
+                        onClick={() => {
+                          router.push('/generate?view=video')
+                          setModelMenuOpen(false)
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          width: '100%',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#ffffff',
+                          color: '#111827',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#f3f4f6'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#ffffff'
+                        }}
+                      >
+                        <Video style={{ width: '16px', height: '16px' }} />
+                        <span>视频</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
 
   // 渲染聊天视图
   const renderChatView = () => (
@@ -982,6 +1578,7 @@ export default function GenerateLandingPage() {
           width: '100%',
           maxWidth: '800px',
           margin: '0 auto',
+          transform: 'translateX(20px)',
           padding: '24px 28px',
           overflowY: 'auto',
           display: 'flex',
@@ -1004,17 +1601,17 @@ export default function GenerateLandingPage() {
                 alignItems: isUser ? 'flex-end' : 'flex-start',
                 flexDirection: 'column',
                 gap: '6px',
-                marginLeft: isUser ? '-113px' : '0',
+                marginLeft: isUser ? '-113px' : '-33px',
               }}
             >
               <div
                 style={{
-                  maxWidth: '72%',
+                  maxWidth: isUser ? '72%' : '100%',
                   padding: '12px 18px',
                   borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                   backgroundColor: 'transparent',
                   color: '#111827',
-                  fontSize: '14px',
+                  fontSize: '15px',
                   lineHeight: 1.7,
                   boxShadow: 'none',
                   border: 'none',
@@ -2067,10 +2664,10 @@ export default function GenerateLandingPage() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: isChatView ? '0' : '48px 0',
+          padding: isChatView || isImageView || isVideoView ? '0' : '48px 0',
           width: '100%',
           height: '100%',
-          overflow: isChatView ? 'hidden' : 'visible',
+          overflow: isChatView || isImageView || isVideoView ? 'hidden' : 'visible',
           minHeight: 0,
         }}
       >
@@ -2080,6 +2677,10 @@ export default function GenerateLandingPage() {
           renderGeminiTestView()
         ) : isChatView ? (
           renderChatView()
+        ) : isImageView ? (
+          renderImageView()
+        ) : isVideoView ? (
+          renderImageView()
         ) : staticView ? (
           renderStaticView(staticView)
         ) : (
@@ -2170,7 +2771,7 @@ export default function GenerateLandingPage() {
                     {isVideoView || isImageView ? (
                       <>
                         {isVideoView ? (
-                          <Play style={{ width: '16px', height: '16px' }} />
+                          <Video style={{ width: '16px', height: '16px' }} />
                         ) : (
                           <Images style={{ width: '16px', height: '16px' }} />
                         )}
@@ -2253,6 +2854,76 @@ export default function GenerateLandingPage() {
                               )
                             })}
                           </div>
+                          {isImageView && (
+                            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', width: '100%' }}>
+                              <button
+                                onClick={() => {
+                                  router.push('/generate?view=video')
+                                  setModelMenuOpen(false)
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  width: '100%',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#ffffff',
+                                  color: '#111827',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#f3f4f6'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#ffffff'
+                                }}
+                              >
+                                <Video style={{ width: '16px', height: '16px' }} />
+                                <span>视频</span>
+                              </button>
+                            </div>
+                          )}
+                          {isVideoView && (
+                            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e5e7eb', width: '100%' }}>
+                              <button
+                                onClick={() => {
+                                  router.push('/generate?view=image')
+                                  setModelMenuOpen(false)
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  width: '100%',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#ffffff',
+                                  color: '#111827',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#f3f4f6'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#ffffff'
+                                }}
+                              >
+                                <Images style={{ width: '16px', height: '16px' }} />
+                                <span>图片</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         modelOptions

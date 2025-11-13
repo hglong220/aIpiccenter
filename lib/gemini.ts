@@ -50,16 +50,17 @@ function getGeminiClient(): GoogleGenerativeAI | null {
  */
 export async function enhancePrompt(userPrompt: string): Promise<string> {
   try {
-    const client = getGeminiClient();
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
     
     // If no API key, return enhanced version using simple logic
-    if (!client) {
+    if (!apiKey || apiKey === 'your-gemini-api-key') {
       // Simple enhancement: add common quality indicators
       const enhanced = `${userPrompt}, highly detailed, professional quality, 4k resolution, best quality`;
       return enhanced;
     }
     
-    const model = client.getGenerativeModel({ model: 'gemini-pro' });
+    // Get proxy agent if configured
+    const proxyAgent = getProxyAgent();
     
     const enhancementPrompt = `
 You are an expert AI prompt engineer. Enhance the following prompt for AI image/video generation to be more detailed, specific, and effective while maintaining the user's original intent.
@@ -75,9 +76,50 @@ Provide an enhanced version that includes:
 Return only the enhanced prompt, nothing else.
 `;
 
-    const result = await model.generateContent(enhancementPrompt);
-    const response = await result.response;
-    return response.text().trim();
+    const model = 'gemini-pro';
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+    // Prepare fetch options with proxy support
+    const fetchOptions: {
+      method: string;
+      headers: Record<string, string>;
+      body: string;
+      dispatcher?: ProxyAgent;
+    } = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: enhancementPrompt }],
+          },
+        ],
+      }),
+    };
+
+    // Add proxy dispatcher if available
+    if (proxyAgent) {
+      fetchOptions.dispatcher = proxyAgent;
+      console.info('[Gemini] Using proxy for prompt enhancement:', process.env.GEMINI_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY);
+    }
+
+    // Make API call using undici fetch (supports proxy)
+    const response = await fetch(apiUrl, fetchOptions);
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`API request failed with status ${response.status}: ${errorData}`);
+    }
+
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text || '')
+      .join('\n')
+      .trim();
+
+    return text || `${userPrompt}, highly detailed, professional quality, 4k resolution, best quality`;
   } catch (error) {
     console.error('Error enhancing prompt:', error);
     // Return enhanced version with simple additions if API fails

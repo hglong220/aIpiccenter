@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureGeminiProxy } from '@/lib/proxy'
+import { fetch, ProxyAgent } from 'undici'
 
 const DEFAULT_IMAGE_MODEL =
   process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'imagegeneration@006'
+
+// 获取代理配置
+function getProxyAgent(): ProxyAgent | undefined {
+  const proxyUrl =
+    process.env.GEMINI_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    null
+
+  if (!proxyUrl) {
+    return undefined
+  }
+
+  try {
+    const agent = new ProxyAgent(proxyUrl)
+    console.info('[Gemini] Proxy agent created for image generation:', proxyUrl)
+    return agent
+  } catch (error) {
+    console.error('[Gemini] Failed to create proxy agent:', error)
+    return undefined
+  }
+}
 
 interface GenerateImageBody {
   prompt?: string
@@ -49,15 +72,33 @@ export async function POST(request: NextRequest) {
       requestPayload.aspectRatio = body.aspectRatio
     }
 
+    // Get proxy agent if configured
+    const proxyAgent = getProxyAgent()
+    
+    // Prepare fetch options with proxy support
+    const fetchOptions: {
+      method: string
+      headers: Record<string, string>
+      body: string
+      dispatcher?: ProxyAgent
+    } = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestPayload),
+    }
+
+    // Add proxy dispatcher if available
+    if (proxyAgent) {
+      fetchOptions.dispatcher = proxyAgent
+      console.info('[Gemini] Using proxy for image generation:', process.env.GEMINI_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY)
+    }
+
+    // Use undici fetch (supports proxy)
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_IMAGE_MODEL}:generateImage?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      }
+      fetchOptions
     )
 
     if (!response.ok) {

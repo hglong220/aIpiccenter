@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { fetch, ProxyAgent, Agent } from 'undici'
 
-const GOOGLE_GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL ?? 'gemini-1.5-flash'
+const GOOGLE_GEMINI_MODEL = process.env.GOOGLE_GEMINI_MODEL ?? 'gemini-2.5-flash'
 const GOOGLE_GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_GEMINI_MODEL}:generateContent`
 const RAPIDAPI_ENDPOINT = 'https://gemini-pro-ai.p.rapidapi.com/'
 
