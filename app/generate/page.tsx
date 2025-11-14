@@ -30,6 +30,7 @@ import {
   Shield,
   Pencil,
   Trash2,
+  Plus,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -272,7 +273,6 @@ export default function GenerateLandingPage() {
     lastMessage: string | null
   }>>([])
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   
   // 标记是否已加载，防止初始加载时保存
   const isLoadedRef = useRef(false)
@@ -280,12 +280,16 @@ export default function GenerateLandingPage() {
   
   // 加载会话列表
   const loadChatSessions = useCallback(async () => {
+    console.log('[DEBUG] loadChatSessions called, user:', user)
     if (!user) return
     setIsLoadingSessions(true)
     try {
+      console.log('[DEBUG] Fetching /api/chats/list')
       const response = await fetch('/api/chats/list')
+      console.log('[DEBUG] loadChatSessions response status:', response.status)
       if (response.ok) {
         const data = await response.json()
+        console.log('[DEBUG] loadChatSessions data:', data)
         if (data.success) {
           setChatSessions(data.data || [])
         }
@@ -323,16 +327,21 @@ export default function GenerateLandingPage() {
 
   // 加载会话消息
   const loadChatHistory = useCallback(async (chatId: string) => {
+    console.log('[DEBUG] loadChatHistory called with chatId:', chatId)
     try {
+      console.log('[DEBUG] Fetching /api/chats/' + chatId + '/history')
       const response = await fetch(`/api/chats/${chatId}/history`)
+      console.log('[DEBUG] loadChatHistory response status:', response.status)
       if (response.ok) {
         const data = await response.json()
+        console.log('[DEBUG] loadChatHistory data:', data)
         if (data.success) {
           // 确保消息格式正确，包括图像数据
           const messages = (data.data.messages || []).map((msg: any) => ({
             ...msg,
             images: msg.images || undefined,
           }))
+          console.log('[DEBUG] Setting chatMessages, count:', messages.length)
           setChatMessages(messages)
           setCurrentChatId(chatId)
         }
@@ -342,50 +351,181 @@ export default function GenerateLandingPage() {
     }
   }, [])
 
+  // 加载图像聊天历史记录
+  const loadImageChatHistory = useCallback(async (chatId: string) => {
+    console.log('[DEBUG] loadImageChatHistory called with chatId:', chatId)
+    try {
+      console.log('[DEBUG] Fetching /api/chats/' + chatId + '/history for image view')
+      const response = await fetch(`/api/chats/${chatId}/history`)
+      console.log('[DEBUG] loadImageChatHistory response status:', response.status)
+      if (response.ok) {
+        const data = await response.json()
+        console.log('[DEBUG] loadImageChatHistory data:', data)
+        if (data.success) {
+          // 确保消息格式正确，包括图像数据
+          const messages = (data.data.messages || []).map((msg: any) => ({
+            ...msg,
+            images: msg.images || undefined,
+          }))
+          console.log('[DEBUG] Setting imageChatMessages, count:', messages.length)
+          // 即使消息为空，也设置空数组（这是正常的，表示会话存在但没有消息）
+          setImageChatMessages(messages)
+          setCurrentChatId(chatId)
+          // 标记已加载，允许保存
+          isImageLoadedRef.current = true
+        } else {
+          // 如果API返回失败（例如会话不存在），清空消息并创建新会话
+          console.log('[DEBUG] Failed to load history (API returned failure), creating new chat')
+          setImageChatMessages([])
+          setCurrentChatId(null)
+          const newChatId = await createNewChat()
+          if (newChatId) {
+            setCurrentChatId(newChatId)
+            router.replace(`/generate?view=image&chatId=${newChatId}`)
+          }
+        }
+      } else if (response.status === 404) {
+        // 如果会话不存在（404），清空消息并创建新会话
+        console.log('[DEBUG] Chat not found (404), creating new chat')
+        setImageChatMessages([])
+        setCurrentChatId(null)
+        const newChatId = await createNewChat()
+        if (newChatId) {
+          setCurrentChatId(newChatId)
+          router.replace(`/generate?view=image&chatId=${newChatId}`)
+        }
+      } else {
+        // 其他错误，只记录错误，不清空消息（可能是网络问题）
+        console.error('加载图像聊天历史失败，状态码:', response.status)
+      }
+    } catch (error) {
+      console.error('加载图像聊天历史失败:', error)
+      // 网络错误时，不清空消息，保持当前状态
+    }
+  }, [createNewChat, router])
+
   // 切换会话
   const switchChat = useCallback(async (chatId: string) => {
+    console.log('[DEBUG] switchChat called with chatId:', chatId)
     await loadChatHistory(chatId)
-  }, [loadChatHistory])
+    // 更新URL参数
+    router.push(`/generate?view=chat&chatId=${chatId}`)
+  }, [loadChatHistory, router])
+
+  // 删除会话
+  const handleDeleteChat = useCallback(async (chatId: string, e: React.MouseEvent) => {
+    console.log('[DEBUG] handleDeleteChat called with chatId:', chatId)
+    e.stopPropagation()
+    if (!confirm('确定要删除这个会话吗？')) {
+      return
+    }
+    try {
+      const response = await fetch(`/api/chats/${chatId}`, {
+        method: 'DELETE',
+      })
+      console.log('[DEBUG] DELETE response status:', response.status)
+      if (!response.ok) {
+        throw new Error('删除会话失败')
+      }
+      // 如果删除的是当前会话，清空消息
+      if (chatId === currentChatId) {
+        setChatMessages([])
+        setCurrentChatId(null)
+        router.push('/generate?view=chat')
+      }
+      // 刷新会话列表
+      await loadChatSessions()
+    } catch (error) {
+      console.error('删除会话失败:', error)
+    }
+  }, [currentChatId, loadChatSessions, router])
 
   // 初始化：加载会话列表，如果没有当前会话则创建新会话
   useEffect(() => {
+    console.log('[DEBUG] useEffect triggered, isChatView:', isChatView, 'isImageView:', isImageView, 'user:', user)
     if ((isChatView || isImageView) && user) {
+      console.log('[DEBUG] Calling loadChatSessions')
       loadChatSessions()
-      // 检查URL参数中是否有chatId
-      const urlParams = new URLSearchParams(window.location.search)
-      const chatIdFromUrl = urlParams.get('chatId')
-      if (chatIdFromUrl) {
-        loadChatHistory(chatIdFromUrl)
-      } else if (!currentChatId) {
-        // 如果没有当前会话，创建新会话
-        createNewChat()
+      
+      // 图像视图：检查URL参数中是否有chatId
+      if (isImageView) {
+        const urlParams = new URLSearchParams(window.location.search)
+        const chatIdFromUrl = urlParams.get('chatId')
+        console.log('[DEBUG] Image view - chatIdFromUrl:', chatIdFromUrl, 'currentChatId:', currentChatId, 'imageChatMessages.length:', imageChatMessages.length)
+        
+        if (chatIdFromUrl) {
+          // URL中有chatId，加载历史记录
+          if (chatIdFromUrl !== currentChatId || imageChatMessages.length === 0) {
+            // 如果chatId不同，或者当前消息为空，加载历史记录
+            console.log('[DEBUG] Loading image chat history for chatId:', chatIdFromUrl)
+            loadImageChatHistory(chatIdFromUrl)
+          }
+        } else {
+          // 如果没有chatId，不自动创建新会话
+          // 只在用户发送第一条消息时创建新会话（在handleSendMessage中处理）
+          console.log('[DEBUG] No chatId in URL, waiting for user to send first message')
+          // 清空当前状态，但不创建新会话
+          setCurrentChatId(null)
+          setImageChatMessages([])
+          // 清空 localStorage 中的图像聊天消息
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('imageChatMessages')
+          }
+        }
+        return
+      }
+      
+      // 聊天视图：检查URL参数中是否有chatId
+      if (isChatView) {
+        const urlParams = new URLSearchParams(window.location.search)
+        const chatIdFromUrl = urlParams.get('chatId')
+        console.log('[DEBUG] chatIdFromUrl:', chatIdFromUrl, 'currentChatId:', currentChatId)
+        if (chatIdFromUrl && chatIdFromUrl !== currentChatId) {
+          // URL中有chatId且与当前不同，加载历史记录
+          console.log('[DEBUG] Calling loadChatHistory with chatIdFromUrl:', chatIdFromUrl)
+          loadChatHistory(chatIdFromUrl)
+        }
+        // 如果没有chatId，不自动创建新会话，让用户主动选择或创建
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChatView, isImageView, user])
 
+  // 监听URL参数变化，当chatId变化时加载历史记录
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('imageChatMessages')
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          // 过滤掉发送中的消息和欢迎消息
-          const filtered = parsed.filter(
-            (msg: ChatMessage) => msg.status !== 'sending' && msg.id !== 'welcome-image'
-          )
-          if (filtered.length > 0) {
-            setImageChatMessages(filtered)
-            isImageLoadedRef.current = true
-            return
+    if ((isChatView || isImageView) && user) {
+      const urlParams = new URLSearchParams(window.location.search)
+      const chatIdFromUrl = urlParams.get('chatId')
+      console.log('[DEBUG] URL chatId changed:', chatIdFromUrl, 'currentChatId:', currentChatId, 'isImageView:', isImageView, 'imageChatMessages.length:', imageChatMessages.length)
+      
+      if (chatIdFromUrl) {
+        if (isImageView) {
+          // 如果chatId不同，或者当前消息为空，加载历史记录
+          if (chatIdFromUrl !== currentChatId || imageChatMessages.length === 0) {
+            console.log('[DEBUG] URL chatId changed in image view, loading image chat history for:', chatIdFromUrl)
+            loadImageChatHistory(chatIdFromUrl)
+          }
+        } else if (isChatView) {
+          if (chatIdFromUrl !== currentChatId) {
+            console.log('[DEBUG] URL chatId changed, loading history for:', chatIdFromUrl)
+            loadChatHistory(chatIdFromUrl)
           }
         }
-      } catch (e) {
-        console.error('Failed to load image chat messages from localStorage:', e)
       }
-      isImageLoadedRef.current = true
     }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isChatView, isImageView, user])
+
+  // 图像视图不再从 localStorage 加载旧消息
+  // 每次打开图像视图都会创建新会话，显示空白窗口
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // 只在非图像视图时初始化标记
+      if (!isImageView) {
+        isImageLoadedRef.current = true
+      }
+    }
+  }, [isImageView])
   
   // 保存聊天记录到 localStorage（仅在加载完成后）
   useEffect(() => {
@@ -437,13 +577,93 @@ export default function GenerateLandingPage() {
   const isGeminiTest = view === 'gemini-test'
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
+  // 格式化时间
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return '刚刚'
+    if (diffMins < 60) return `${diffMins}分钟前`
+    if (diffHours < 24) return `${diffHours}小时前`
+    if (diffDays < 7) return `${diffDays}天前`
+    
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    return `${month}月${day}日`
+  }
+
+  // 将聊天会话按时间分组
+  const groupedChatSessions = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const thisYear = new Date(now.getFullYear(), 0, 1)
+
+    const groups: {
+      section: string
+      items: Array<{
+        id: string
+        title: string
+        subtitle: string
+        chatId: string
+        updatedAt: string
+      }>
+    }[] = [
+      { section: '今天', items: [] },
+      { section: '最近7天', items: [] },
+      { section: '本年度', items: [] },
+    ]
+
+    chatSessions.forEach((session) => {
+      const updatedAt = new Date(session.updatedAt)
+      const item = {
+        id: session.id,
+        title: session.title || '新对话',
+        subtitle: session.lastMessage || formatTime(session.updatedAt),
+        chatId: session.id,
+        updatedAt: session.updatedAt,
+      }
+
+      if (updatedAt >= today) {
+        groups[0].items.push(item)
+      } else if (updatedAt >= sevenDaysAgo) {
+        groups[1].items.push(item)
+      } else if (updatedAt >= thisYear) {
+        groups[2].items.push(item)
+      }
+    })
+
+    // 按更新时间倒序排序每个分组
+    groups.forEach((group) => {
+      group.items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    })
+
+    return groups.filter((group) => group.items.length > 0)
+  }, [chatSessions])
+
+  // 将分组后的会话展平为搜索项格式（用于搜索过滤）
+  const chatSessionsAsSearchItems = useMemo(() => {
+    return groupedChatSessions.flatMap((group) =>
+      group.items.map((item) => ({
+        ...item,
+        section: group.section,
+      }))
+    )
+  }, [groupedChatSessions])
+
   const filteredSearchItems = useMemo(() => {
-    if (!searchQuery.trim()) return searchItems
-    return searchItems.filter((item) =>
+    // 在搜索窗口中显示聊天会话列表
+    const itemsToSearch = chatSessionsAsSearchItems
+    if (!searchQuery.trim()) return itemsToSearch
+    return itemsToSearch.filter((item) =>
       item.title.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
       item.subtitle?.toLowerCase().includes(searchQuery.trim().toLowerCase())
     )
-  }, [searchQuery, searchItems])
+  }, [searchQuery, chatSessionsAsSearchItems])
 
   useEffect(() => {
     if (!filteredSearchItems.length) {
@@ -458,21 +678,57 @@ export default function GenerateLandingPage() {
     })
   }, [filteredSearchItems])
 
-  const previewSearchItem = useMemo(() => {
-    if (hoveredSearchId) {
-      return searchItems.find((item) => item.id === hoveredSearchId) || null
-    }
-    if (activeSearchId) {
-      return searchItems.find((item) => item.id === activeSearchId) || null
-    }
-    return null
-  }, [hoveredSearchId, activeSearchId, searchItems])
+  // 存储选中会话的消息
+  const [selectedChatMessages, setSelectedChatMessages] = useState<any[]>([])
+  const [loadingChatMessages, setLoadingChatMessages] = useState(false)
 
-  const handleRenameSearchItem = (id: string, newTitle: string) => {
+  const previewSearchItem = useMemo(() => {
+    const item = filteredSearchItems.find((item) => item.id === (hoveredSearchId || activeSearchId)) || null
+    return item
+  }, [hoveredSearchId, activeSearchId, filteredSearchItems])
+
+  // 当选中会话变化时，加载该会话的消息
+  useEffect(() => {
+    const chatId = previewSearchItem?.chatId
+    if (chatId && searchOverlayOpen) {
+      setLoadingChatMessages(true)
+      fetch(`/api/chats/${chatId}/history`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setSelectedChatMessages(data.data.messages || [])
+          }
+        })
+        .catch((error) => {
+          console.error('加载会话消息失败:', error)
+          setSelectedChatMessages([])
+        })
+        .finally(() => {
+          setLoadingChatMessages(false)
+        })
+    } else {
+      setSelectedChatMessages([])
+    }
+  }, [previewSearchItem?.chatId, searchOverlayOpen])
+
+  const handleRenameSearchItem = async (id: string, newTitle: string) => {
     if (!newTitle.trim()) return
-    setSearchItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, title: newTitle.trim() } : item))
-    )
+    // 如果是聊天会话，更新会话标题
+    const session = chatSessions.find((s) => s.id === id)
+    if (session) {
+      try {
+        const response = await fetch(`/api/chats/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle.trim() }),
+        })
+        if (response.ok) {
+          await loadChatSessions()
+        }
+      } catch (error) {
+        console.error('重命名会话失败:', error)
+      }
+    }
     setEditingSearchId(null)
     setEditSearchTitle('')
   }
@@ -938,19 +1194,37 @@ export default function GenerateLandingPage() {
   useEffect(() => {
     if (searchOverlayOpen) {
       setSearchQuery('')
-      setActiveSearchId(searchItems[0]?.id ?? null)
+      // 加载会话列表
+      if (isChatView && user) {
+        loadChatSessions()
+      }
+      // 设置第一个会话为选中项
+      if (chatSessions.length > 0) {
+        setActiveSearchId(chatSessions[0].id)
+      }
     }
-  }, [searchOverlayOpen, searchItems])
+  }, [searchOverlayOpen, isChatView, user, chatSessions.length])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setSearchOverlayOpen(false)
       }
+      // Ctrl+E 编辑当前选中的会话
+      if ((event.ctrlKey || event.metaKey) && event.key === 'e' && searchOverlayOpen && previewSearchItem) {
+        event.preventDefault()
+        handleStartRename(previewSearchItem.id, previewSearchItem.title)
+      }
+      // Ctrl+D 删除当前选中的会话
+      if ((event.ctrlKey || event.metaKey) && event.key === 'd' && searchOverlayOpen && previewSearchItem?.chatId) {
+        event.preventDefault()
+        const fakeEvent = { stopPropagation: () => {} } as React.MouseEvent
+        handleDeleteChat(previewSearchItem.chatId, fakeEvent)
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [])
+  }, [searchOverlayOpen, previewSearchItem])
 
   useEffect(() => {
     if (!navExpanded) {
@@ -1028,6 +1302,19 @@ export default function GenerateLandingPage() {
     if (isImageView) {
       console.log('[Chat] Image view detected')
       
+      // 确保有当前会话
+      let chatId = currentChatId
+      if (!chatId) {
+        chatId = await createNewChat()
+        if (!chatId) {
+          console.error('无法创建新会话')
+          return
+        }
+        // 创建新会话后，更新 URL 和状态
+        setCurrentChatId(chatId)
+        router.push(`/generate?view=image&chatId=${chatId}`)
+      }
+      
       // 先清空输入框，避免重复提交
       setPrompt('')
       // 设置生成状态，防止重复提交
@@ -1062,6 +1349,9 @@ export default function GenerateLandingPage() {
         console.error('无法创建新会话')
         return
       }
+      // 创建新会话后，更新 URL 和状态
+      setCurrentChatId(chatId)
+      router.push(`/generate?view=chat&chatId=${chatId}`)
     }
     
     // 聊天模式，继续正常的文本对话流程
@@ -1518,19 +1808,41 @@ export default function GenerateLandingPage() {
       }
 
       // 更新消息，显示生成的图像
+      const generatedImages = data.data?.images || []
+      const imageText = `已为你生成图像：${userPrompt.trim()}`
+      
       setImageChatMessages((prev) =>
         prev.map((message) =>
           message.id === placeholderId
             ? {
                 ...message,
-                text: `已为你生成图像：${userPrompt.trim()}`,
-                images: data.data?.images || [],
+                text: imageText,
+                images: generatedImages,
                 status: 'sent',
                 timestamp: new Date().toISOString(),
               }
             : message,
         ),
       )
+      
+      // 保存包含图像的消息到数据库
+      if (currentChatId && generatedImages.length > 0) {
+        try {
+          // 将第一个图像URL保存为imagePath，如果有多个图像，可以将它们合并
+          const imagePath = generatedImages[0] || ''
+          await fetch(`/api/chats/${currentChatId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              role: 'assistant',
+              content: imageText,
+              imagePath: imagePath,
+            }),
+          })
+        } catch (error) {
+          console.error('保存图像消息失败:', error)
+        }
+      }
     } catch (error) {
       console.error('生成图像失败', error)
       setImageChatMessages((prev) =>
@@ -1548,7 +1860,7 @@ export default function GenerateLandingPage() {
     } finally {
       setIsGeneratingImage(false)
     }
-  }, [selectedAspect])
+  }, [selectedAspect, currentChatId])
 
   // 使用 Gemini 处理图像视图的聊天消息
   // 完全依赖 Gemini 的自主判断，不做任何干预
@@ -1559,6 +1871,33 @@ export default function GenerateLandingPage() {
     if (!trimmedPrompt) {
       setIsGeneratingImage(false)
       return
+    }
+    
+    // 确保有当前会话
+    let chatId = currentChatId
+    if (!chatId) {
+      chatId = await createNewChat()
+      if (!chatId) {
+        console.error('无法创建新会话')
+        setIsGeneratingImage(false)
+        return
+      }
+      setCurrentChatId(chatId)
+      router.push(`/generate?view=image&chatId=${chatId}`)
+    }
+    
+    // 保存用户消息到数据库
+    try {
+      await fetch(`/api/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'user',
+          content: trimmedPrompt,
+        }),
+      })
+    } catch (error) {
+      console.error('保存用户消息失败:', error)
     }
     
     try {
@@ -1619,6 +1958,20 @@ ${conversationContext || '(无)'}
       
       setImageChatMessages((prev) => [...prev, assistantMessage])
       
+      // 保存助手消息到数据库
+      try {
+        await fetch(`/api/chats/${chatId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content: geminiReply || '抱歉，我无法理解您的意思。',
+          }),
+        })
+      } catch (error) {
+        console.error('保存助手消息失败:', error)
+      }
+      
       // 检查 Gemini 的回复中是否明确表达了要生成图像的意图
       // 使用自然语言识别，而不是格式要求
       // 只有当 Gemini 明确表示"我现在为您生成"、"正在生成"等，并且有图像描述时，才调用图像生成
@@ -1677,8 +2030,24 @@ ${conversationContext || '(无)'}
       }
       
       setImageChatMessages((prev) => [...prev, assistantMessage])
+      
+      // 保存错误消息到数据库
+      if (currentChatId) {
+        try {
+          await fetch(`/api/chats/${currentChatId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              role: 'assistant',
+              content: '抱歉，处理您的消息时出现了问题。请稍后再试。',
+            }),
+          })
+        } catch (saveError) {
+          console.error('保存错误消息失败:', saveError)
+        }
+      }
     }
-  }, [imageChatMessages, handleImageGenerationDirect])
+  }, [imageChatMessages, handleImageGenerationDirect, currentChatId, createNewChat, router])
 
   // 图像生成处理函数（用于 image view，保留用于其他地方调用）
   // 注意：这个函数现在已不再使用，因为所有消息都通过 handleImageChatMessage 处理
@@ -2535,6 +2904,23 @@ ${conversationContext || '(无)'}
             const Icon = item.icon
             const isSearch = item.action === 'search'
             const isHovered = hoveredSidebarIndex === index
+            
+            // 判断当前图标是否应该高亮
+            let isActive = false
+            if (isSearch) {
+              isActive = searchOverlayOpen
+            } else if (item.href) {
+              if (item.href === '/') {
+                // 首页需要检查当前路径
+                isActive = typeof window !== 'undefined' && window.location.pathname === '/'
+              } else if (item.href.includes('view=')) {
+                // 其他页面检查 view 参数
+                const hrefView = item.href.split('view=')[1]?.split('&')[0] || null
+                // 匹配当前的 view，默认 view 是 'chat'
+                isActive = hrefView === view
+              }
+            }
+            
             const shouldShowIcon = !(navExpanded && item.hideIconWhenExpanded)
             const expandedLabelJustify = shouldShowIcon ? 'flex-start' : 'center'
             const defaultIconElement = <Icon style={{ width: '18px', height: '18px' }} />
@@ -2582,18 +2968,18 @@ ${conversationContext || '(无)'}
             }
 
             const collapsedStyle = {
-              width: '32px',
-              height: '32px',
+              width: isActive ? '36px' : '32px',
+              height: isActive ? '36px' : '32px',
               borderRadius: '16px',
               border: 'none',
-              backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
+              backgroundColor: isActive ? '#F3F4F6' : (isHovered ? '#F3F4F6' : 'transparent'),
               color: '#1f2937',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               textDecoration: 'none',
-              transition: 'transform 0.2s ease, color 0.2s ease, background-color 0.2s ease',
+              transition: 'transform 0.2s ease, color 0.2s ease, background-color 0.2s ease, width 0.2s ease, height 0.2s ease',
               transform: isHovered ? 'scale(1.12)' : 'scale(1)',
               userSelect: 'none',
             } as const
@@ -2602,18 +2988,18 @@ ${conversationContext || '(无)'}
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
-              padding: '10px 12px',
+              padding: isActive ? '12px 14px' : '10px 12px',
               borderRadius: '12px',
               border: 'none',
-              backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
+              backgroundColor: isActive ? '#F3F4F6' : (isHovered ? '#F3F4F6' : 'transparent'),
               color: '#1f2937',
               cursor: 'pointer',
               textDecoration: 'none',
               justifyContent: expandedLabelJustify,
-              transition: 'background-color 0.2s ease, color 0.2s ease',
+              transition: 'background-color 0.2s ease, color 0.2s ease, padding 0.2s ease',
               position: 'relative',
-              paddingLeft: shouldShowIcon ? '12px' : '0',
-              paddingRight: shouldShowIcon ? '12px' : '0',
+              paddingLeft: shouldShowIcon ? (isActive ? '14px' : '12px') : '0',
+              paddingRight: shouldShowIcon ? (isActive ? '14px' : '12px') : '0',
               userSelect: 'none',
             } as const
 
@@ -2681,54 +3067,54 @@ ${conversationContext || '(无)'}
                     href={item.href}
                     onMouseEnter={() => setHoveredSidebarIndex(index)}
                     onMouseLeave={() => setHoveredSidebarIndex(null)}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    if (!navExpanded) {
-                      return
-                    }
-                    setNavExpanded(false)
-                  }}
-                  style={navExpanded ? expandedStyle : collapsedStyle}
-                >
-                  {shouldShowIcon && iconElement}
-                  <span
-                    style={{
-                      opacity: navExpanded ? 1 : 0,
-                      maxWidth: navExpanded ? '140px' : '0',
-                      transform: navExpanded ? 'translateX(0)' : 'translateX(-8px)',
-                      transition: 'opacity 0.24s ease, max-width 0.24s ease, transform 0.24s ease',
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      fontSize: navExpanded ? '15px' : '14px',
-                      fontWeight: 500,
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (!navExpanded) {
+                        return
+                      }
+                      setNavExpanded(false)
                     }}
+                    style={navExpanded ? expandedStyle : collapsedStyle}
                   >
-                    {navExpanded && item.expandedLabel ? item.expandedLabel : item.label}
-                  </span>
-                </Link>
-                {!navExpanded && isHovered && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 'calc(100% + 12px)',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      backgroundColor: '#f9fafb',
-                      color: '#111827',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      whiteSpace: 'nowrap',
-                      zIndex: 1000,
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                      border: '1px solid #e5e7eb',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                )}
+                    {shouldShowIcon && iconElement}
+                    <span
+                      style={{
+                        opacity: navExpanded ? 1 : 0,
+                        maxWidth: navExpanded ? '140px' : '0',
+                        transform: navExpanded ? 'translateX(0)' : 'translateX(-8px)',
+                        transition: 'opacity 0.24s ease, max-width 0.24s ease, transform 0.24s ease',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        fontSize: navExpanded ? '15px' : '14px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {navExpanded && item.expandedLabel ? item.expandedLabel : item.label}
+                    </span>
+                  </Link>
+                  {!navExpanded && isHovered && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 'calc(100% + 12px)',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        backgroundColor: '#f9fafb',
+                        color: '#111827',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        zIndex: 1000,
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        border: '1px solid #e5e7eb',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -2938,232 +3324,477 @@ ${conversationContext || '(无)'}
                 style={{
                   width: '430px',
                   borderRight: '1px solid #e5e7eb',
-                  padding: '12px 14px 18px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '8px',
-                  overflowY: 'auto',
+                  overflow: 'hidden',
                 }}
               >
-                {filteredSearchItems.length ? (
-                  filteredSearchItems.map((item) => {
-                    const isActive = item.id === activeSearchId
-                    const isHovered = hoveredSearchId === item.id
-                    const isEditing = editingSearchId === item.id
-                    return (
-                      <div
-                        key={item.id}
-                        style={{
-                          width: '100%',
-                          borderRadius: '6px',
-                          padding: '14px 6px',
-                          backgroundColor: isHovered ? '#F3F4F6' : 'transparent',
-                          transition: 'background-color 0.2s ease',
-                          position: 'relative',
-                        }}
-                        onMouseEnter={() => setHoveredSearchId(item.id)}
-                        onMouseLeave={() => {
-                          if (!isEditing) {
-                            setHoveredSearchId(null)
-                          }
-                        }}
-                      >
-                        <button
-                          onClick={() => setActiveSearchId(item.id)}
-                          style={{
-                            width: '100%',
-                            border: 'none',
-                            textAlign: 'left',
-                            backgroundColor: 'transparent',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '0px',
-                            padding: 0,
-                          }}
-                        >
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editSearchTitle}
-                              onChange={(e) => setEditSearchTitle(e.target.value)}
-                              onBlur={() => {
-                                if (editSearchTitle.trim()) {
-                                  handleRenameSearchItem(item.id, editSearchTitle)
-                                } else {
-                                  setEditingSearchId(null)
-                                  setEditSearchTitle('')
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  if (editSearchTitle.trim()) {
-                                    handleRenameSearchItem(item.id, editSearchTitle)
-                                  }
-                                } else if (e.key === 'Escape') {
-                                  setEditingSearchId(null)
-                                  setEditSearchTitle('')
-                                }
-                              }}
-                              autoFocus
-                              style={{
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                color: '#111827',
-                                border: '1px solid #1A73E8',
-                                borderRadius: '4px',
-                                padding: '2px 6px',
-                                outline: 'none',
-                                width: '100%',
-                              }}
-                            />
-                          ) : (
-                            <span
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '8px',
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                color: '#111827',
-                              }}
-                            >
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{item.title}</span>
-                              {item.subtitle && <span style={{ fontSize: '12px', fontWeight: 400, color: '#6b7280', flexShrink: 0 }}>{item.subtitle}</span>}
-                            </span>
-                          )}
-                        </button>
-                        {isHovered && !isEditing && (
+                {/* 操作区域 */}
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderBottom: '1px solid #e5e7eb',
+                  }}
+                >
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '8px' }}>操作</div>
+                  <button
+                    onClick={async () => {
+                      const newChatId = await createNewChat()
+                      if (newChatId) {
+                        router.push(`/generate?view=chat&chatId=${newChatId}`)
+                        setSearchOverlayOpen(false)
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      backgroundColor: 'transparent',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: '#111827',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f9fafb'
+                      e.currentTarget.style.borderColor = '#d1d5db'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                      e.currentTarget.style.borderColor = '#e5e7eb'
+                    }}
+                  >
+                    <Pencil size={14} />
+                    创建新聊天
+                  </button>
+                </div>
+
+                {/* 会话列表（按时间分组） */}
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '12px 14px 18px',
+                  }}
+                >
+                  {groupedChatSessions.length === 0 ? (
+                    <div style={{ fontSize: '13px', color: '#9ca3af', textAlign: 'center', padding: '20px' }}>
+                      还没有对话，点击上方按钮创建新对话
+                    </div>
+                  ) : (
+                    groupedChatSessions.map((group) => {
+                      // 过滤该分组中的会话
+                      const filteredGroupItems = searchQuery.trim()
+                        ? group.items.filter(
+                            (item) =>
+                              item.title.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+                              item.subtitle.toLowerCase().includes(searchQuery.trim().toLowerCase())
+                          )
+                        : group.items
+
+                      if (filteredGroupItems.length === 0) return null
+
+                      return (
+                        <div key={group.section} style={{ marginBottom: '24px' }}>
                           <div
                             style={{
-                              position: 'absolute',
-                              right: '8px',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '16px',
-                              backgroundColor: '#F3F4F6',
-                              borderRadius: '4px',
-                              padding: '2px 4px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#9ca3af',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                              marginBottom: '8px',
+                              paddingLeft: '4px',
                             }}
-                            onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleStartRename(item.id, item.title)
-                              }}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                cursor: 'pointer',
-                                padding: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: '3px',
-                                color: '#6b7280',
-                                minWidth: '32px',
-                                minHeight: '32px',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#e5e7eb'
-                                e.currentTarget.style.color = '#111827'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'transparent'
-                                e.currentTarget.style.color = '#6b7280'
-                              }}
-                              title="重命名"
-                            >
-                              <Pencil style={{ width: '18px', height: '18px' }} />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteSearchItem(item.id)
-                              }}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                cursor: 'pointer',
-                                padding: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderRadius: '3px',
-                                color: '#6b7280',
-                                minWidth: '32px',
-                                minHeight: '32px',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#fee2e2'
-                                e.currentTarget.style.color = '#dc2626'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'transparent'
-                                e.currentTarget.style.color = '#6b7280'
-                              }}
-                              title="删除"
-                            >
-                              <Trash2 style={{ width: '18px', height: '18px' }} />
-                            </button>
+                            {group.section}
                           </div>
-                        )}
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div style={{ fontSize: '13px', color: '#9ca3af' }}>未找到匹配内容</div>
-                )}
+                          {filteredGroupItems.map((item) => {
+                            const isActive = item.id === activeSearchId
+                            const isHovered = hoveredSearchId === item.id
+                            const isEditing = editingSearchId === item.id
+                            return (
+                              <div
+                                key={item.id}
+                                style={{
+                                  width: '100%',
+                                  borderRadius: '6px',
+                                  padding: '10px 8px',
+                                  backgroundColor: isActive ? '#f3f4f6' : isHovered ? '#f9fafb' : 'transparent',
+                                  border: isActive ? '1px solid #1A73E8' : '1px solid transparent',
+                                  transition: 'all 0.2s ease',
+                                  position: 'relative',
+                                  marginBottom: '2px',
+                                }}
+                                onMouseEnter={() => setHoveredSearchId(item.id)}
+                                onMouseLeave={() => {
+                                  if (!isEditing) {
+                                    setHoveredSearchId(null)
+                                  }
+                                }}
+                              >
+                                <button
+                                  onClick={() => {
+                                    setActiveSearchId(item.id)
+                                  }}
+                                  onDoubleClick={() => {
+                                    switchChat(item.chatId)
+                                    setSearchOverlayOpen(false)
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    border: 'none',
+                                    textAlign: 'left',
+                                    backgroundColor: 'transparent',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '4px',
+                                    padding: 0,
+                                  }}
+                                >
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editSearchTitle}
+                                      onChange={(e) => setEditSearchTitle(e.target.value)}
+                                      onBlur={() => {
+                                        if (editSearchTitle.trim()) {
+                                          handleRenameSearchItem(item.id, editSearchTitle)
+                                        } else {
+                                          setEditingSearchId(null)
+                                          setEditSearchTitle('')
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          if (editSearchTitle.trim()) {
+                                            handleRenameSearchItem(item.id, editSearchTitle)
+                                          }
+                                        } else if (e.key === 'Escape') {
+                                          setEditingSearchId(null)
+                                          setEditSearchTitle('')
+                                        }
+                                      }}
+                                      autoFocus
+                                      style={{
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: '#111827',
+                                        border: '1px solid #1A73E8',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        outline: 'none',
+                                        width: '100%',
+                                      }}
+                                    />
+                                  ) : (
+                                    <span
+                                      style={{
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: isActive ? '#1A73E8' : '#111827',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {item.title}
+                                    </span>
+                                  )}
+                                </button>
+                                {isHovered && !isEditing && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      right: '8px',
+                                      top: '50%',
+                                      transform: 'translateY(-50%)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      backgroundColor: '#F3F4F6',
+                                      borderRadius: '4px',
+                                      padding: '2px',
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleStartRename(item.id, item.title)
+                                      }}
+                                      style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '3px',
+                                        color: '#6b7280',
+                                        minWidth: '28px',
+                                        minHeight: '28px',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#e5e7eb'
+                                        e.currentTarget.style.color = '#111827'
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'transparent'
+                                        e.currentTarget.style.color = '#6b7280'
+                                      }}
+                                      title="编辑"
+                                    >
+                                      <Pencil size={18} />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        const fakeEvent = { stopPropagation: () => {} } as React.MouseEvent
+                                        handleDeleteChat(item.chatId, fakeEvent)
+                                      }}
+                                      style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '3px',
+                                        color: '#6b7280',
+                                        minWidth: '28px',
+                                        minHeight: '28px',
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#fee2e2'
+                                        e.currentTarget.style.color = '#dc2626'
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'transparent'
+                                        e.currentTarget.style.color = '#6b7280'
+                                      }}
+                                      title="删除"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
               </div>
               <div
                 style={{
                   flex: 1,
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#9ca3af',
-                  fontSize: '14px',
-                  padding: '0 48px',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
                 }}
               >
-                {previewSearchItem ? (
-                  <div style={{ width: '100%', maxWidth: '520px', display: 'flex', flexDirection: 'column', gap: '12px', color: '#111827' }}>
-                    {previewSearchItem.subtitle && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#9ca3af' }}>
-                        <span style={{ color: '#6b7280' }}>{previewSearchItem.subtitle}</span>
-                      </div>
-                    )}
-                    <h3 style={{ fontSize: '20px', fontWeight: 700, lineHeight: 1.4 }}>{previewSearchItem.title}</h3>
-                    <div
+                {/* 预览内容区域 */}
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '24px 48px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {previewSearchItem ? (
+                    <div style={{ width: '100%', maxWidth: '520px', display: 'flex', flexDirection: 'column', gap: '12px', color: '#111827' }}>
+                      {previewSearchItem.subtitle && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#9ca3af' }}>
+                          <span style={{ color: '#6b7280' }}>{previewSearchItem.subtitle}</span>
+                        </div>
+                      )}
+                      <h3 style={{ fontSize: '14px', fontWeight: 400, lineHeight: 1.4 }}>{previewSearchItem.title}</h3>
+                      {previewSearchItem.chatId ? (
+                        // 显示聊天消息
+                        <div
+                          style={{
+                            fontSize: '14px',
+                            color: '#4b5563',
+                            lineHeight: 1.6,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                          }}
+                        >
+                          {loadingChatMessages ? (
+                            <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>加载中...</div>
+                          ) : selectedChatMessages.length === 0 ? (
+                            <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>暂无消息</div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {selectedChatMessages.slice(-5).map((message: any, index: number) => (
+                                <div
+                                  key={message.id}
+                                  style={{
+                                    fontSize: '14px',
+                                    color: '#111827',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    lineHeight: 1.6,
+                                  }}
+                                >
+                                  {message.content}
+                                </div>
+                              ))}
+                              {selectedChatMessages.length > 5 && (
+                                <div style={{ fontSize: '12px', color: '#9ca3af', textAlign: 'center', padding: '8px 0' }}>
+                                  还有 {selectedChatMessages.length - 5} 条消息...
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: '14px',
+                            color: '#4b5563',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          预览内容示例：这是"{previewSearchItem.title}"的完整摘要区域，未来可以显示对话首段、关键词或高亮匹配结果。当前为静态占位，后续可接入真实数据。
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ color: '#9ca3af', fontSize: '14px' }}>请选择结果查看详情</div>
+                  )}
+                </div>
+
+                {/* 底部操作栏 */}
+                {previewSearchItem && previewSearchItem.chatId && (
+                  <footer
+                    style={{
+                      borderTop: '1px solid #e5e7eb',
+                      padding: '12px 24px',
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        if (previewSearchItem.chatId) {
+                          switchChat(previewSearchItem.chatId)
+                          setSearchOverlayOpen(false)
+                        }
+                      }}
                       style={{
-                        fontSize: '14px',
-                        color: '#4b5563',
-                        lineHeight: 1.6,
+                        padding: '6px 12px',
+                        backgroundColor: '#1A73E8',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#1557B0'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#1A73E8'
                       }}
                     >
-                      预览内容示例：这是"{previewSearchItem.title}"的完整摘要区域，未来可以显示对话首段、关键词或高亮匹配结果。当前为静态占位，后续可接入真实数据。
-                    </div>
-                  </div>
-                ) : (
-                  '请选择结果查看详情'
+                      前往
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (previewSearchItem) {
+                          handleStartRename(previewSearchItem.id, previewSearchItem.title)
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'transparent',
+                        color: '#6b7280',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f9fafb'
+                        e.currentTarget.style.borderColor = '#d1d5db'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                        e.currentTarget.style.borderColor = '#e5e7eb'
+                      }}
+                    >
+                      编辑
+                      <span style={{ marginLeft: '4px', fontSize: '11px', color: '#9ca3af' }}>Ctrl+E</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (previewSearchItem?.chatId) {
+                          const fakeEvent = { stopPropagation: () => {} } as React.MouseEvent
+                          handleDeleteChat(previewSearchItem.chatId, fakeEvent)
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'transparent',
+                        color: '#dc2626',
+                        border: '1px solid #fee2e2',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#fee2e2'
+                        e.currentTarget.style.borderColor = '#fecaca'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                        e.currentTarget.style.borderColor = '#fee2e2'
+                      }}
+                    >
+                      删除
+                      <span style={{ marginLeft: '4px', fontSize: '11px', color: '#9ca3af' }}>Ctrl+D</span>
+                    </button>
+                  </footer>
+                )}
+                {!previewSearchItem && (
+                  <footer
+                    style={{
+                      borderTop: '1px solid #e5e7eb',
+                      padding: '16px 24px',
+                      display: 'flex',
+                      justifyContent: 'flex-start',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>按 Esc 关闭</span>
+                  </footer>
                 )}
               </div>
             </div>
-            <footer
-              style={{
-                borderTop: '1px solid #e5e7eb',
-                padding: '16px 24px',
-                display: 'flex',
-                justifyContent: 'flex-start',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ fontSize: '12px', color: '#9ca3af' }}>按 Esc 关闭</span>
-            </footer>
           </div>
         </div>
       )}

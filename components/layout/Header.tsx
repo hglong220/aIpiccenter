@@ -14,6 +14,7 @@ export function Header() {
   const { user } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
+  const [hasShownOnHomepage, setHasShownOnHomepage] = useState(false)
   const hiddenHeader = pathname !== '/'
 
   useEffect(() => {
@@ -34,10 +35,14 @@ export function Header() {
   }, [showAuthModal])
 
   useEffect(() => {
-    if (pathname === '/' && searchParams.get('authModal') === '1') {
+    // 在首页首次加载时自动显示登录模态框
+    if (pathname === '/' && !hasShownOnHomepage && !user) {
+      setShowAuthModal(true)
+      setHasShownOnHomepage(true)
+    } else if (searchParams.get('authModal') === '1') {
       setShowAuthModal(true)
     }
-  }, [pathname, searchParams])
+  }, [pathname, searchParams, hasShownOnHomepage, user])
 
   if (hiddenHeader) {
     return null

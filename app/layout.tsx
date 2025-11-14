@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { Header } from '@/components/layout/Header'
-import { Footer } from '@/components/layout/Footer'
 import { ToasterProvider } from '@/components/providers/ToasterProvider'
 import { AuthProvider } from '@/contexts/AuthContext'
 
@@ -17,12 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh">
       <body className={inter.className}>
-
         <AuthProvider>
-          <Header />
           <ToasterProvider />
           {children}
-          <Footer />
         </AuthProvider>
       </body>
     </html>

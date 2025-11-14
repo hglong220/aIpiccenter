@@ -2,7 +2,7 @@
 
 import { AuthForm } from '@/components/auth/AuthForm'
 
-export default function AuthPage() {
+export default function LoginPage() {
   return <AuthForm initialMode="login" redirect="/generate" />
 }
 

@@ -22,7 +22,7 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
   const { login, register, sendCode, resetPassword } = useAuth()
 
   const [mode, setMode] = useState<AuthMode>(initialMode)
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('code')
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('password')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [username, setUsername] = useState('')
@@ -41,6 +41,9 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
   useEffect(() => {
     if (mode !== 'login') {
       setLoginMethod('code')
+    } else {
+      // 切换到登录模式时，默认使用密码登录
+      setLoginMethod('password')
     }
   }, [mode])
 
@@ -172,6 +175,7 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
       setPassword('')
       setConfirmPassword('')
       setCountdown(0)
+      setLoginMethod('password')
     }
   }
 
@@ -192,7 +196,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
     setPassword('')
     setConfirmPassword('')
     setCountdown(0)
-    setLoginMethod('code')
+    // 登录模式默认使用密码登录，其他模式使用验证码
+    setLoginMethod(newMode === 'login' ? 'password' : 'code')
   }
 
   const outerStyle = (isEmbedded
@@ -439,6 +444,7 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
                 setPassword('')
                 setConfirmPassword('')
                 setCountdown(0)
+                setLoginMethod('password')
               }}
               style={{ color: '#1A73E8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
             >
@@ -457,6 +463,7 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
                 setPassword('')
                 setConfirmPassword('')
                 setCountdown(0)
+                setLoginMethod('password')
               }}
               style={{ color: '#1A73E8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
             >

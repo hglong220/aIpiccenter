@@ -100,7 +100,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        toast.success('登录成功')
         await refreshUser()
         return true
       }

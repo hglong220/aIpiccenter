@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTokenFromCookies, verifyToken } from '@/lib/auth'
+import { ensureFtsIndexed } from '@/lib/fts'
 
 /**
  * 保存消息到指定会话
@@ -42,6 +43,9 @@ export async function POST(
       return NextResponse.json({ error: '会话不存在或无权限访问' }, { status: 404 })
     }
 
+    // Ensure FTS table exists before any write operations
+    await ensureFtsIndexed()
+
     // 如果是第一条用户消息，自动设置会话标题
     if (role === 'user' && !session.title) {
       const title = content.substring(0, 50).trim()
@@ -57,9 +61,11 @@ export async function POST(
         chatId,
         role,
         content,
-        imagePath: imagePath || null,
+        imagePath: imagePath || null, // Restore imagePath
       },
     })
+
+    // The manual FTS insert is now handled by ensureFtsIndexed, so this is no longer needed.
 
     // 更新会话的更新时间
     await prisma.chatSession.update({
@@ -75,7 +81,7 @@ export async function POST(
         text: message.content,
         timestamp: message.createdAt.toISOString(),
         status: 'sent',
-        images: message.imagePath ? [message.imagePath] : undefined,
+        images: message.imagePath ? [message.imagePath] : undefined, // Restore images
       },
     })
   } catch (error) {

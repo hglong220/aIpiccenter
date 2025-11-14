@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTokenFromCookies, verifyToken } from '@/lib/auth'
+import { ensureFtsIndexed } from '@/lib/fts'
 
 const MAX_RESULTS = 20
-
-async function ensureFtsIndexed() {
-  await prisma.$executeRawUnsafe(
-    `CREATE VIRTUAL TABLE IF NOT EXISTS chat_message_fts USING FTS5(content, chatId, messageId, createdAt UNINDEXED);`
-  )
-
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO chat_message_fts (content, chatId, messageId, createdAt)
-    SELECT m.content, m.chatId, m.id, strftime('%Y-%m-%dT%H:%M:%S', m.createdAt)
-    FROM ChatMessage m
-    WHERE NOT EXISTS (
-      SELECT 1 FROM chat_message_fts f WHERE f.messageId = m.id
-    )
-  `)
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,6 +51,7 @@ export async function GET(request: NextRequest) {
         content: string
         snippet: string
         createdAt: string
+        title: string | null
       }>
     >(
       `
@@ -72,6 +59,7 @@ export async function GET(request: NextRequest) {
              m.id            AS messageId,
              m.content       AS content,
              snippet(chat_message_fts, 0, '<mark>', '</mark>', '...', 10) AS snippet,
+             s.title         AS title,
              m.createdAt     AS createdAt
       FROM chat_message_fts
       JOIN ChatMessage m ON m.id = chat_message_fts.messageId
@@ -91,6 +79,7 @@ export async function GET(request: NextRequest) {
       content: row.content,
       highlight: row.snippet || row.content,
       createdAt: new Date(row.createdAt).toISOString(),
+      title: row.title, // Add title to results
     }))
 
     return NextResponse.json({
@@ -107,6 +96,8 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+
 
 
 

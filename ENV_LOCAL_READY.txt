@@ -24,3 +24,5 @@ WECHAT_PAY_NOTIFY_URL=https://yourdomain.com/api/payment/wechat/notify
 
 GEMINI_PROXY_URL=
 
+
+
