@@ -13,8 +13,9 @@ export interface ImageGenerationRequest {
   height: number;
   count: number;
   model?: string;
-  referenceImage?: string;
+  referenceImage?: string; // base64或URL
   referenceImageName?: string;
+  referenceFileId?: string; // 上传文件的ID（优先使用）
 }
 
 export interface ImageGenerationResult {
@@ -32,6 +33,8 @@ export interface VideoGenerationRequest {
   prompt: string;
   duration?: number;
   resolution?: string;
+  referenceFileId?: string; // 参考视频/图像文件ID
+  referenceImage?: string; // base64或URL（向后兼容）
 }
 
 export interface VideoGenerationResult {
@@ -199,6 +202,92 @@ export interface ChatMessage {
 
 export interface ChatSessionDetail extends ChatSessionSummary {
   messages: ChatMessage[]
+}
+
+// ============================================
+// 文件上传系统类型定义
+// ============================================
+
+export interface FileUploadResult {
+  fileId: string
+  url: string
+  previewUrl?: string
+  thumbnailUrl?: string
+  filename: string
+  mimeType: string
+  fileType: string
+  size: number
+  status: string
+  metadata?: FileMetadata
+  recommendedModels?: string[]
+  taskType?: string
+}
+
+export interface FileMetadata {
+  image?: {
+    width?: number
+    height?: number
+    aspectRatio?: string
+    colorMode?: string
+  }
+  video?: {
+    width?: number
+    height?: number
+    duration?: number
+    bitrate?: number
+    codec?: string
+    fps?: number
+  }
+  audio?: {
+    duration?: number
+    bitrate?: number
+    sampleRate?: number
+    channels?: number
+  }
+  document?: {
+    pageCount?: number
+    wordCount?: number
+    language?: string
+  }
+  code?: {
+    programmingLanguage?: string
+    linesOfCode?: number
+    dependencies?: string[]
+  }
+}
+
+export interface FileInfo {
+  id: string
+  filename: string
+  mimeType: string
+  fileType: string
+  size: number
+  url: string
+  previewUrl?: string
+  thumbnailUrl?: string
+  status: string
+  moderationStatus: string
+  createdAt: string
+  metadata?: FileMetadata
+}
+
+export interface ChunkUploadInitResponse {
+  fileId: string
+  totalChunks: number
+  chunkSize: number
+}
+
+export interface ChunkUploadProgress {
+  fileId: string
+  chunkIndex: number
+  totalChunks: number
+  uploadedChunks: number
+  progress: number // 0-100
+}
+
+export interface SignedUrlResponse {
+  url: string
+  expiresAt: string
 }
 
 

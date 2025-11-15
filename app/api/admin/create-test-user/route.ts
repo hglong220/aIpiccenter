@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import type { ApiResponse, AuthResponse } from '@/types'
-import { generateToken } from '@/lib/auth'
+import { generateToken, attachAuthCookie } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         updatedAt: updatedUser.updatedAt.toISOString(),
       })
 
-      return NextResponse.json<ApiResponse<AuthResponse>>({
+      const response = NextResponse.json<ApiResponse<AuthResponse>>({
         success: true,
         data: {
           user: {
@@ -80,10 +80,12 @@ export async function POST(request: NextRequest) {
             createdAt: updatedUser.createdAt.toISOString(),
             updatedAt: updatedUser.updatedAt.toISOString(),
           },
-          token,
         },
         message: '测试账号已存在，已更新信用点',
       })
+
+      attachAuthCookie(response, token)
+      return response
     }
 
     // 加密密码
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest) {
       updatedAt: admin.updatedAt.toISOString(),
     })
 
-    return NextResponse.json<ApiResponse<AuthResponse>>({
+    const response = NextResponse.json<ApiResponse<AuthResponse>>({
       success: true,
       data: {
         user: {
@@ -128,10 +130,12 @@ export async function POST(request: NextRequest) {
           createdAt: admin.createdAt.toISOString(),
           updatedAt: admin.updatedAt.toISOString(),
         },
-        token,
       },
       message: '测试管理员账号创建成功',
     })
+
+    attachAuthCookie(response, token)
+    return response
   } catch (error) {
     console.error('创建测试账号错误:', error)
     const errorMessage = error instanceof Error ? error.message : '未知错误'
@@ -145,6 +149,7 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
 
 
 

@@ -168,11 +168,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const data: { success: boolean; data?: User } = await response.json()
+      const data: { success: boolean; data?: User; error?: string } = await response.json()
       if (data.success && data.data) {
         setUser(data.data)
       } else {
-        console.warn('refreshUser response error:', data.error)
+        console.warn('refreshUser response error:', data.error || 'Unknown error')
         setUser(null)
       }
     } catch (error) {

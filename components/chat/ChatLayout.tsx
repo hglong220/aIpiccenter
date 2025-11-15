@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { MessageSquare, Plus, Star, Trash2, Search, X, Loader2 } from 'lucide-react'
+import { MessageSquare, Plus, Star, Trash2, Search, X, Loader2, Edit2, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import ChatDetailPage from '@/components/chat/ChatDetailPage'
@@ -60,6 +60,8 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   
   // State for the chat detail page moved here
   const [messages, setMessages] = useState<Message[]>([])
@@ -278,9 +280,239 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
     }
   }
 
+  // 开始重命名
+  const handleStartRename = (session: ChatSession, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setRenamingSessionId(session.id)
+    setRenameValue(session.title || '')
+  }
+
+  // 保存重命名
+  const handleSaveRename = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/chats/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: renameValue.trim() || null }),
+      })
+      if (!response.ok) {
+        throw new Error('重命名失败')
+      }
+      setRenamingSessionId(null)
+      setRenameValue('')
+      loadSessions()
+      toast.success('重命名成功')
+    } catch (error) {
+      console.error('重命名失败:', error)
+      toast.error('重命名失败')
+    }
+  }
+
+  // 取消重命名
+  const handleCancelRename = () => {
+    setRenamingSessionId(null)
+    setRenameValue('')
+  }
+
+
+  // 编辑消息
+  const handleEditMessage = async (messageId: string, newText: string) => {
+    if (!chatId) return
+    
+    try {
+      const response = await fetch(`/api/chats/${chatId}/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newText }),
+      })
+
+      if (!response.ok) throw new Error('更新消息失败')
+
+      // 更新本地消息
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === messageId ? { ...msg, text: newText } : msg
+        )
+      )
+
+      // 如果编辑的是用户消息，重新生成AI回复
+      const editedMessage = messages.find((m) => m.id === messageId)
+      if (editedMessage && editedMessage.sender === 'user') {
+        // 找到这条消息之后的所有消息并删除
+        const editedIndex = messages.findIndex((m) => m.id === messageId)
+        setMessages((prev) => prev.slice(0, editedIndex + 1))
+
+        // 重新生成AI回复
+        const historyMessages = messages.slice(0, editedIndex).map((msg) => ({
+          role: msg.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.text }],
+        }))
+        historyMessages.push({
+          role: 'user',
+          parts: [{ text: newText }],
+        })
+
+        await generateAIResponse(newText, historyMessages)
+      }
+    } catch (error) {
+      console.error('编辑消息失败:', error)
+      toast.error('编辑消息失败')
+    }
+  }
+
+  // 重新生成AI回复
+  const handleRegenerate = async (messageId: string) => {
+    if (!chatId) return
+
+    try {
+      // 找到要重新生成的消息
+      const messageIndex = messages.findIndex((m) => m.id === messageId)
+      if (messageIndex === -1) return
+
+      // 删除这条消息及之后的所有消息
+      const messagesToKeep = messages.slice(0, messageIndex)
+      setMessages(messagesToKeep)
+
+      // 获取用户的上一条消息
+      const userMessage = messagesToKeep
+        .slice()
+        .reverse()
+        .find((m) => m.sender === 'user')
+
+      if (!userMessage) {
+        toast.error('没有找到用户消息')
+        return
+      }
+
+      // 构建历史消息
+      const historyMessages = messagesToKeep.map((msg) => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }],
+      }))
+
+      // 重新生成AI回复
+      await generateAIResponse(userMessage.text, historyMessages)
+    } catch (error) {
+      console.error('重新生成失败:', error)
+      toast.error('重新生成失败')
+    }
+  }
+
+  // 生成AI回复的通用函数
+  const generateAIResponse = async (prompt: string, historyMessages: Array<{ role: string; parts: Array<{ text: string }> }>) => {
+    if (!chatId) return
+
+    setIsSending(true)
+
+    try {
+      const aiResponse = await fetch('/api/ai/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          history: historyMessages,
+          stream: true,
+        }),
+      })
+
+      if (!aiResponse.ok) throw new Error('AI 响应失败')
+
+      const reader = aiResponse.body?.getReader()
+      if (!reader) throw new Error('无法读取响应流')
+
+      const decoder = new TextDecoder()
+      let assistantText = ''
+      let buffer = ''
+      const assistantMessage: Message = {
+        id: `temp-assistant-${Date.now()}`,
+        sender: 'assistant',
+        text: '',
+        timestamp: new Date().toISOString(),
+        status: 'sending',
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+
+      let lastUpdateTime = 0
+      const updateThrottle = 50
+
+      const updateMessage = (text: string) => {
+        const now = Date.now()
+        if (now - lastUpdateTime >= updateThrottle) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessage.id ? { ...msg, text } : msg
+            )
+          )
+          lastUpdateTime = now
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.text) {
+                assistantText += data.text
+                updateMessage(assistantText)
+              } else if (data.error) {
+                console.error('[Chat] Stream error:', data.error)
+                if (!assistantText) {
+                  assistantText = `错误: ${data.error}`
+                  updateMessage(assistantText)
+                }
+              }
+            } catch (e) {
+              console.warn('[Chat] Failed to parse data line:', line.substring(0, 100))
+            }
+          }
+        }
+      }
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessage.id ? { ...msg, text: assistantText } : msg
+        )
+      )
+
+      const saveAssistantResponse = await fetch(`/api/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'assistant',
+          content: assistantText,
+        }),
+      })
+
+      if (saveAssistantResponse.ok) {
+        const savedAssistant = await saveAssistantResponse.json()
+        assistantMessage.id = savedAssistant.data.id
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessage.id ? { ...msg, id: savedAssistant.data.id, status: 'sent' } : msg
+          )
+        )
+        window.dispatchEvent(new CustomEvent('chatMessageSaved'))
+      }
+    } catch (error) {
+      console.error('生成AI回复失败:', error)
+      toast.error('生成回复失败')
+    } finally {
+      setIsSending(false)
+    }
+  }
 
   // Send message logic moved here
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, images?: Array<{ url: string; mimeType: string; base64?: string; filename: string }>) => {
     if (!chatId) return
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
@@ -288,6 +520,7 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
       text: text,
       timestamp: new Date().toISOString(),
       status: 'sending',
+      images: images,
     }
 
     setMessages((prev) => [...prev, userMessage])
@@ -295,12 +528,16 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
     setIsSending(true)
 
     try {
+      // 如果有文件，将文件URL数组存储为JSON
+      const imagePath = images && images.length > 0 ? JSON.stringify(images.map(img => img.url)) : undefined
+      
       const saveUserMsgResponse = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role: 'user',
-          content: userMessage.text,
+          content: userMessage.text || (images && images.length > 0 ? `已上传 ${images.length} 个文件` : ''),
+          imagePath: imagePath,
         }),
       })
 
@@ -314,18 +551,21 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
         role: msg.sender === 'user' ? 'user' : 'model',
         parts: [{ text: msg.text }],
       }))
-      historyMessages.push({
-        role: 'user',
-        parts: [{ text: userMessage.text }],
-      })
+      
+      // 准备发送给Gemini的图片数据（仅包含base64编码的图片）
+      const imageData = images?.filter(img => img.mimeType.startsWith('image/') && img.base64).map(img => ({
+        mimeType: img.mimeType,
+        base64: img.base64!,
+      }))
 
       const aiResponse = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: userMessage.text,
+          prompt: userMessage.text || (images && images.length > 0 ? '请分析这些文件' : ''),
           history: historyMessages,
           stream: true,
+          images: imageData && imageData.length > 0 ? imageData : undefined,
         }),
       })
 
@@ -336,6 +576,7 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
       
       const decoder = new TextDecoder()
       let assistantText = ''
+      let buffer = '' // 用于累积不完整的行
       const assistantMessage: Message = {
         id: `temp-assistant-${Date.now()}`,
         sender: 'assistant',
@@ -351,31 +592,64 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
         return [...updated, assistantMessage]
       })
 
+      // 使用节流来减少状态更新频率，提高性能
+      let lastUpdateTime = 0
+      const updateThrottle = 50 // 每50ms最多更新一次
+      
+      const updateMessage = (text: string) => {
+        const now = Date.now()
+        if (now - lastUpdateTime >= updateThrottle) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessage.id
+                ? { ...msg, text }
+                : msg
+            )
+          )
+          lastUpdateTime = now
+        }
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        buffer += chunk
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // 保留最后一个可能不完整的行
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.text) {
-                assistantText += data.text
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessage.id
-                      ? { ...msg, text: assistantText }
-                      : msg
-                  )
-                )
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6))
+                  if (data.text) {
+                    assistantText += data.text
+                    updateMessage(assistantText)
+                  } else if (data.error) {
+                    // 处理错误消息
+                    console.error('[Chat] Stream error:', data.error)
+                    if (!assistantText) {
+                      assistantText = `错误: ${data.error}`
+                      updateMessage(assistantText)
+                    }
+                  }
+                } catch (e) {
+                  // 忽略解析错误
+                  console.warn('[Chat] Failed to parse data line:', line.substring(0, 100))
+                }
               }
-            } catch (e) {}
-          }
-        }
+            }
       }
+
+      // 确保最终状态更新
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessage.id
+            ? { ...msg, text: assistantText }
+            : msg
+        )
+      )
 
       const saveAssistantResponse = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST',
@@ -565,49 +839,111 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
         {globalSearchQuery.length > 1 && (
           <div style={{
             position: 'absolute',
-            top: '130px', // Position below the search bar
+            top: '130px',
             left: '8px',
             right: '8px',
             backgroundColor: 'white',
-            border: '2px solid red', // DEBUG: Make border very obvious
+            border: '1px solid #e5e7eb',
             borderRadius: '8px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             zIndex: 101,
             maxHeight: 'calc(100vh - 150px)',
             overflowY: 'auto',
-            padding: '8px',
+            padding: '4px',
           }}>
             {isGlobalSearchLoading ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>
-                <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                Loading...
+              <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: '13px' }}>搜索中...</span>
               </div>
             ) : globalSearchResults.length > 0 ? (
-              globalSearchResults.map((result) => (
-                <Link key={result.messageId} href={`/chat/${result.chatId}`}
-                  onClick={() => setGlobalSearchQuery('')} // Close search on click
-                  style={{
-                    display: 'block',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    textDecoration: 'none',
-                    color: 'inherit',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  {/* DEBUG: Simplified rendering */}
-                  <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: '4px' }}>
-                    {result.title || 'No Title'}
-                  </div>
-                  <div 
-                    style={{ fontSize: '12px', color: '#6b7280' }}
-                    dangerouslySetInnerHTML={{ __html: result.highlight }} 
-                  />
-                </Link>
-              ))
+              <>
+                <div style={{ padding: '8px 12px', fontSize: '12px', color: '#6b7280', borderBottom: '1px solid #e5e7eb', fontWeight: 500 }}>
+                  找到 {globalSearchResults.length} 条结果
+                </div>
+                {globalSearchResults.map((result, index) => (
+                  <Link 
+                    key={result.messageId} 
+                    href={`/chat/${result.chatId}`}
+                    onClick={() => setGlobalSearchQuery('')}
+                    style={{
+                      display: 'block',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      textDecoration: 'none',
+                      color: 'inherit',
+                      borderBottom: index < globalSearchResults.length - 1 ? '1px solid #f3f4f6' : 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f9fafb'
+                      e.currentTarget.style.cursor = 'pointer'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      gap: '8px',
+                      marginBottom: '6px' 
+                    }}>
+                      <MessageSquare size={14} style={{ marginTop: '2px', color: '#9ca3af', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ 
+                          fontWeight: 600, 
+                          color: '#1f2937', 
+                          fontSize: '13px',
+                          marginBottom: '4px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {result.title || '未命名对话'}
+                        </div>
+                        <div 
+                          style={{ 
+                            fontSize: '12px', 
+                            color: '#6b7280',
+                            lineHeight: '1.5',
+                            maxHeight: '40px',
+                            overflow: 'hidden',
+                          }}
+                          dangerouslySetInnerHTML={{ 
+                            __html: result.highlight.length > 100 
+                              ? result.highlight.substring(0, 100) + '...' 
+                              : result.highlight 
+                          }} 
+                        />
+                        <div style={{ 
+                          fontSize: '11px', 
+                          color: '#9ca3af', 
+                          marginTop: '4px' 
+                        }}>
+                          {new Date(result.createdAt).toLocaleDateString('zh-CN', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </>
             ) : (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>No results found.</div>
+              <div style={{ 
+                padding: '40px 20px', 
+                textAlign: 'center', 
+                color: '#9ca3af',
+                fontSize: '13px',
+              }}>
+                <div style={{ marginBottom: '8px' }}>未找到匹配的结果</div>
+                <div style={{ fontSize: '12px', color: '#d1d5db' }}>
+                  尝试使用不同的关键词搜索
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -645,17 +981,20 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
           ) : (
             sortedSessions.map((session) => {
               const isActive = session.id === chatId
+              const isRenaming = renamingSessionId === session.id
               return (
                 <div
                   key={session.id}
                   onClick={() => {
-                    router.push(`/chat/${session.id}`)
+                    if (!isRenaming) {
+                      router.push(`/chat/${session.id}`)
+                    }
                   }}
                   style={{
                     padding: '10px 12px',
                     marginBottom: '4px',
                     borderRadius: '8px',
-                    cursor: 'pointer',
+                    cursor: isRenaming ? 'default' : 'pointer',
                     backgroundColor: isActive ? '#f3f4f6' : 'transparent',
                     border: isActive ? '1px solid #1A73E8' : '1px solid transparent',
                     transition: 'all 0.2s',
@@ -665,12 +1004,12 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
                     gap: '8px',
                   }}
                   onMouseEnter={(e) => {
-                    if (!isActive) {
+                    if (!isActive && !isRenaming) {
                       e.currentTarget.style.backgroundColor = '#f9fafb'
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isActive) {
+                    if (!isActive && !isRenaming) {
                       e.currentTarget.style.backgroundColor = 'transparent'
                     }
                   }}
@@ -684,71 +1023,160 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
                     }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
+                    {isRenaming ? (
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
+                        <input
+                          type="text"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.stopPropagation()
+                              handleSaveRename(session.id)
+                            } else if (e.key === 'Escape') {
+                              e.stopPropagation()
+                              handleCancelRename()
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            flex: 1,
+                            padding: '4px 8px',
+                            border: '1px solid #1A73E8',
+                            borderRadius: '4px',
+                            fontSize: '13px',
+                            outline: 'none',
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleSaveRename(session.id)
+                          }}
+                          style={{
+                            padding: '4px',
+                            background: '#1A73E8',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            color: '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                          title="保存"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCancelRename()
+                          }}
+                          style={{
+                            padding: '4px',
+                            background: '#f3f4f6',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            color: '#6b7280',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                          title="取消"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          onDoubleClick={(e) => handleStartRename(session, e)}
+                          style={{
+                            fontSize: '13px',
+                            fontWeight: isActive ? 600 : 500,
+                            color: isActive ? '#1A73E8' : '#1f2937',
+                            marginBottom: '4px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            cursor: 'pointer',
+                          }}
+                          title="双击重命名"
+                        >
+                          {session.title || '新对话'}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#9ca3af',
+                          }}
+                        >
+                          {formatTime(session.updatedAt)}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {!isRenaming && (
                     <div
                       style={{
-                        fontSize: '13px',
-                        fontWeight: isActive ? 600 : 500,
-                        color: isActive ? '#1A73E8' : '#1f2937',
-                        marginBottom: '4px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {session.title || '新对话'}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        color: '#9ca3af',
-                      }}
-                    >
-                      {formatTime(session.updatedAt)}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '4px',
-                    }}
-                  >
-                    <button
-                      onClick={(e) => handleToggleStar(session.id, session.isStarred || false, e)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '4px',
                         display: 'flex',
-                        alignItems: 'center',
-                        color: session.isStarred ? '#fbbf24' : '#9ca3af',
+                        gap: '4px',
                       }}
-                      title={session.isStarred ? '取消星标' : '添加星标'}
                     >
-                      <Star
-                        size={14}
-                        fill={session.isStarred ? '#fbbf24' : 'none'}
-                      />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        console.log('[DEBUG] Delete button clicked for session:', session.id)
-                        handleDeleteChat(session.id, e)
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        color: '#9ca3af',
-                      }}
-                      title="删除"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                      <button
+                        onClick={(e) => handleStartRename(session, e)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#9ca3af',
+                        }}
+                        title="重命名"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => handleToggleStar(session.id, session.isStarred || false, e)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: session.isStarred ? '#fbbf24' : '#9ca3af',
+                        }}
+                        title={session.isStarred ? '取消星标' : '添加星标'}
+                      >
+                        <Star
+                          size={14}
+                          fill={session.isStarred ? '#fbbf24' : 'none'}
+                        />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          console.log('[DEBUG] Delete button clicked for session:', session.id)
+                          handleDeleteChat(session.id, e)
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#9ca3af',
+                        }}
+                        title="删除"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })
@@ -776,6 +1204,8 @@ export function ChatLayout({ chatId }: ChatLayoutProps) {
             isSending={isSending}
             input={input}
             setInput={setInput}
+            onRegenerate={handleRegenerate}
+            onEditMessage={handleEditMessage}
           />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>

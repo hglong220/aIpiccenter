@@ -24,6 +24,10 @@ model User {
   verificationCodes   VerificationCode[]
   passwordResetTokens PasswordResetToken[]
   chatSessions        ChatSession[]
+  files               File[]
+  aiTasks             AITask[]
+  projects            Project[]
+  moderationLogs       ModerationLog[]
 
   @@index([username])
 }
@@ -92,6 +96,7 @@ model Generation {
   status         String   @default("pending")
   createdAt      DateTime @default(now())
   user           User     @relation(fields: [userId], references: [id])
+  projectGenerations ProjectGeneration[]
 
   @@index([userId])
   @@index([type])
@@ -131,4 +136,231 @@ model ChatMessage {
   chat      ChatSession  @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
+}
+
+// ============================================
+// 文件上传系统相关模型
+// ============================================
+
+// 文件主表
+model File {
+  id                String        @id @default(cuid())
+  userId            String
+  originalFilename  String
+  filename          String        @unique
+  mimeType          String
+  fileType          String        // image, video, audio, document, code, archive, 3d, other
+  size              Int           // 文件大小（字节）
+  md5               String        @unique
+  storageProvider   String        @default("local") // local, s3, oss, r2, minio
+  storagePath       String        // 存储路径
+  storageUrl        String?       // 存储URL（如果支持）
+  previewUrl        String?       // 预览URL
+  thumbnailUrl      String?       // 缩略图URL
+  accessLevel       String        @default("private") // private, public, shared
+  status            String        @default("uploading") // uploading, processing, ready, failed, deleted
+  moderationStatus  String        @default("pending") // pending, approved, rejected, flagged
+  moderationReason  String?       // 审核拒绝原因
+  virusScanStatus   String        @default("pending") // pending, clean, infected
+  virusScanResult   String?       // 病毒扫描结果
+  expiresAt         DateTime?     // 文件过期时间（临时文件）
+  retentionDays     Int?         // 保留天数（null表示永久）
+  creditsUsed       Int           @default(0) // 上传/处理消耗的积分
+  metadata          FileMetadata?
+  chunks            FileChunk[]
+  signedUrls        SignedUrl[]
+  projectFiles      ProjectFile[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fileType])
+  @@index([status])
+  @@index([moderationStatus])
+  @@index([md5])
+  @@index([createdAt])
+  @@index([expiresAt])
+}
+
+// 文件元数据表
+model FileMetadata {
+  id                String   @id @default(cuid())
+  fileId            String   @unique
+  file              File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  // 通用元数据
+  width             Int?
+  height            Int?
+  aspectRatio       String?  // 16:9, 4:3, 1:1, etc.
+  colorMode         String?  // RGB, RGBA, Grayscale, etc.
+  duration          Float?   // 视频/音频时长（秒）
+  bitrate           Int?     // 码率（bps）
+  codec             String?  // 编码格式
+  fps               Float?   // 帧率
+  sampleRate        Int?     // 音频采样率
+  channels          Int?     // 音频声道数
+  
+  // 文档元数据
+  pageCount         Int?
+  wordCount         Int?
+  language          String?  // 检测到的语言
+  extractedText     String?  // 提取的文本内容（SQLite自动使用TEXT类型）
+  
+  // 代码元数据
+  programmingLanguage String?
+  linesOfCode       Int?
+  fileStructure     String?  // JSON格式的文件结构（SQLite自动使用TEXT类型）
+  dependencies      String?  // JSON格式的依赖列表（SQLite自动使用TEXT类型）
+  
+  // 其他元数据（JSON格式存储）
+  extraMetadata     String?  // JSON格式（SQLite自动使用TEXT类型）
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// 分片上传表（用于断点续传）
+model FileChunk {
+  id            String   @id @default(cuid())
+  fileId        String
+  file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  chunkIndex    Int      // 分片索引（从0开始）
+  chunkSize     Int      // 分片大小
+  chunkMd5      String   // 分片MD5
+  uploaded      Boolean  @default(false)
+  uploadedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@unique([fileId, chunkIndex])
+  @@index([fileId])
+}
+
+// 签名URL表（临时访问链接）
+model SignedUrl {
+  id          String   @id @default(cuid())
+  fileId      String
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  token       String   @unique
+  url         String
+  expiresAt   DateTime
+  accessCount Int      @default(0)
+  maxAccess   Int?     // null表示无限制
+  createdAt   DateTime @default(now())
+
+  @@index([fileId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// ============================================
+// AI任务队列系统相关模型
+// ============================================
+
+// AI任务表
+model AITask {
+  id             String   @id @default(cuid())
+  userId         String
+  taskType       String   // text, image, video, audio, document, code, composite
+  priority       String   @default("normal") // low, normal, high, urgent
+  status         String   @default("pending") // pending, running, success, failed, retry
+  model          String?  // 使用的模型类型
+  fallbackModels String?  // JSON格式的降级模型列表
+  requestData    String   // JSON格式的请求数据
+  resultData     String?  // JSON格式的结果数据
+  error          String?  // 错误信息
+  retryCount     Int      @default(0)
+  maxRetries     Int      @default(3)
+  progress       Int      @default(0) // 0-100
+  estimatedTime  Int?     // 预估时间（秒）
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([taskType])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+// ============================================
+// 项目管理系统相关模型
+// ============================================
+
+// 项目表
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  coverUrl    String?  // 项目封面图
+  isPublic    Boolean  @default(false)
+  shareToken  String?  @unique // 分享链接token
+  shareExpiresAt DateTime? // 分享链接过期时间
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files       ProjectFile[]
+  generations ProjectGeneration[]
+
+  @@index([userId])
+  @@index([shareToken])
+  @@index([createdAt])
+}
+
+// 项目文件关联表
+model ProjectFile {
+  id        String   @id @default(cuid())
+  projectId String
+  fileId    String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, fileId])
+  @@index([projectId])
+  @@index([fileId])
+}
+
+// 项目生成记录关联表
+model ProjectGeneration {
+  id           String    @id @default(cuid())
+  projectId    String
+  generationId String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  generation   Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+
+  @@unique([projectId, generationId])
+  @@index([projectId])
+  @@index([generationId])
+}
+
+// ============================================
+// 内容审核系统相关模型
+// ============================================
+
+// 审核日志表
+model ModerationLog {
+  id          String   @id @default(cuid())
+  userId      String
+  contentType String   // text, image, video, audio
+  content     String   // URL或文本内容（文本只保存前500字符）
+  riskLevel   String   // pass, review, block
+  categories  String?  // JSON格式的违规类别
+  score       Int      @default(0) // 风险评分 0-100
+  passed      Boolean  @default(false)
+  reason      String?  // 审核原因
+  action      String   // pass, block, review
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([contentType])
+  @@index([riskLevel])
+  @@index([action])
+  @@index([createdAt])
 }

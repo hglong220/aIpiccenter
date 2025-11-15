@@ -55,6 +55,51 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // 如果提供了referenceFileId，获取文件信息
+    let referenceImage: string | undefined = body.referenceImage
+    let referenceImageName: string | undefined = body.referenceImageName
+
+    if (body.referenceFileId) {
+      const referenceFile = await prisma.file.findFirst({
+        where: {
+          id: body.referenceFileId,
+          userId: user.id,
+          fileType: 'image',
+          status: 'ready',
+        },
+        include: {
+          metadata: true,
+        },
+      })
+
+      if (!referenceFile) {
+        return NextResponse.json<ApiResponse<ImageGenerationResult>>({
+          success: false,
+          error: '参考文件不存在或无权限访问',
+        }, { status: 404 })
+      }
+
+      // 使用文件的存储URL或预览URL
+      referenceImage = referenceFile.storageUrl || referenceFile.previewUrl || `/storage/${referenceFile.storagePath}`
+      referenceImageName = referenceFile.originalFilename
+
+      // 如果是本地文件，尝试读取为base64（可选）
+      if (referenceImage.startsWith('/storage/') || referenceImage.startsWith('/uploads/')) {
+        try {
+          const fs = await import('fs/promises')
+          const path = await import('path')
+          const filePath = path.join(process.cwd(), 'storage', referenceFile.storagePath)
+          const fileBuffer = await fs.readFile(filePath)
+          referenceImage = `data:${referenceFile.mimeType};base64,${fileBuffer.toString('base64')}`
+        } catch (error) {
+          console.warn('Failed to read reference file as base64, using URL instead:', error)
+          // 继续使用URL
+        }
+      }
+
+      console.log(`[Image Generation] Using reference file: ${referenceFile.id} (${referenceFile.originalFilename})`)
+    }
+
     if (!body.width || !body.height || body.width < 256 || body.height < 256) {
       return NextResponse.json<ApiResponse<ImageGenerationResult>>({
         success: false,
@@ -88,7 +133,14 @@ export async function POST(request: NextRequest) {
     })
 
     try {
-      const result = await generateImage(body, undefined)
+      // 构建包含参考图像的请求
+      const generationRequest: ImageGenerationRequest = {
+        ...body,
+        referenceImage,
+        referenceImageName,
+      }
+
+      const result = await generateImage(generationRequest, undefined)
 
       await prisma.generation.create({
         data: {

@@ -200,10 +200,9 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
     setLoginMethod(newMode === 'login' ? 'password' : 'code')
   }
 
-  const outerStyle = (isEmbedded
+  const outerStyle = isEmbedded
     ? { width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '8px 0' }
-    : { minHeight: 'calc(100vh - 60px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 10px' }
-  ) as const;
+    : { minHeight: 'calc(100vh - 60px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 10px' };
 
   const cardStyle = {
     width: '100%',

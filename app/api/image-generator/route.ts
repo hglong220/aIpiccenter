@@ -204,7 +204,10 @@ async function generateImageWithGemini(
     )
   }
 
-  const data = await response.json()
+  const data = (await response.json()) as { 
+    candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> } }>;
+    generatedImages?: Array<{ mimeType?: string; b64Json?: string; data?: string }>;
+  }
 
   // 解析 Gemini 响应
   const images: string[] =
@@ -365,7 +368,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const data = await response.json()
+    const data = (await response.json()) as { 
+      predictions?: Array<{ bytesBase64Encoded?: string; mimeType?: string }>;
+    }
 
     // 解析 Vertex AI Imagen 响应
     // 响应格式: { predictions: [{ bytesBase64Encoded: "...", mimeType: "image/png" }] }

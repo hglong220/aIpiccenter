@@ -146,10 +146,10 @@ export function EnterpriseInquiry() {
           </div>
 
           {/* Security Notice */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div className="flex items-start space-x-3">
               <svg
-                className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"
+                className="w-5 h-5 text-gray-600 flex-shrink-0 mt-0.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -162,10 +162,10 @@ export function EnterpriseInquiry() {
                 />
               </svg>
               <div>
-                <p className="text-sm font-medium text-green-900 mb-1">
+                <p className="text-sm font-medium text-gray-900 mb-1">
                   您的数据安全
                 </p>
-                <p className="text-xs text-green-700">
+                <p className="text-xs text-gray-700">
                   所有信息均经过加密，并受到 Google 级安全标准保护。
                 </p>
               </div>

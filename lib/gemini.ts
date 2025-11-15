@@ -113,7 +113,7 @@ Return only the enhanced prompt, nothing else.
       throw new Error(`API request failed with status ${response.status}: ${errorData}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const text = data?.candidates?.[0]?.content?.parts
       ?.map((part: { text?: string }) => part.text || '')
       .join('\n')
@@ -236,7 +236,7 @@ export async function generateImage(
     const response = await fetch(apiUrl, fetchOptions);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorData = (await response.json().catch(() => ({ error: 'Unknown error' }))) as { error?: string };
       throw new Error(errorData.error || `API request failed with status ${response.status}`);
     }
 
@@ -250,7 +250,8 @@ export async function generateImage(
     
     // Extract image URL from API response (adjust based on actual response structure)
     // Example: const imageUrl = apiResponse.imageUrl || apiResponse.data?.imageUrl || apiResponse.images?.[0]?.url;
-    const imageUrl = apiResponse.imageUrl || apiResponse.data?.imageUrl || apiResponse.images?.[0]?.url;
+    const responseTyped = apiResponse as { id?: string; imageUrl?: string; data?: { imageUrl?: string }; images?: Array<{ url?: string }> };
+    const imageUrl = responseTyped.imageUrl || responseTyped.data?.imageUrl || responseTyped.images?.[0]?.url;
     
     if (!imageUrl) {
       throw new Error('No image URL returned from API');
@@ -264,7 +265,7 @@ export async function generateImage(
 
     // Construct result
     const result: ImageGenerationResult = {
-      id: apiResponse.id || `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: responseTyped.id || `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       imageUrl: imageUrl,
       prompt: request.prompt,
       negativePrompt: request.negativePrompt,

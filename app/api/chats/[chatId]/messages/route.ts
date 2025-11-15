@@ -25,10 +25,29 @@ export async function POST(
     const { chatId } = params
     const body = await request.json()
 
-    const { role, content, imagePath } = body
+    const { role, content, imagePath, fileId } = body
 
     if (!role || !content) {
       return NextResponse.json({ error: '缺少必要字段' }, { status: 400 })
+    }
+
+    // 如果提供了fileId，验证文件存在且属于当前用户
+    let finalImagePath = imagePath || null
+    if (fileId) {
+      const file = await prisma.file.findFirst({
+        where: {
+          id: fileId,
+          userId: decoded.id,
+          status: 'ready',
+        },
+      })
+
+      if (!file) {
+        return NextResponse.json({ error: '文件不存在或无权限访问' }, { status: 404 })
+      }
+
+      // 使用文件的存储URL或预览URL
+      finalImagePath = file.thumbnailUrl || file.previewUrl || file.storageUrl || `/storage/${file.storagePath}`
     }
 
     // 验证会话是否属于当前用户
@@ -61,7 +80,7 @@ export async function POST(
         chatId,
         role,
         content,
-        imagePath: imagePath || null, // Restore imagePath
+        imagePath: finalImagePath, // 支持文件ID解析后的路径或直接路径
       },
     })
 
@@ -73,6 +92,25 @@ export async function POST(
       data: { updatedAt: new Date() },
     })
 
+    // 如果消息包含文件，获取文件详细信息
+    let fileInfo = null
+    if (fileId) {
+      const file = await prisma.file.findUnique({
+        where: { id: fileId },
+        include: { metadata: true },
+      })
+      if (file) {
+        fileInfo = {
+          id: file.id,
+          filename: file.originalFilename,
+          fileType: file.fileType,
+          url: file.storageUrl || `/storage/${file.storagePath}`,
+          thumbnailUrl: file.thumbnailUrl,
+          previewUrl: file.previewUrl,
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -81,7 +119,8 @@ export async function POST(
         text: message.content,
         timestamp: message.createdAt.toISOString(),
         status: 'sent',
-        images: message.imagePath ? [message.imagePath] : undefined, // Restore images
+        images: message.imagePath ? [message.imagePath] : undefined,
+        file: fileInfo, // 文件详细信息
       },
     })
   } catch (error) {

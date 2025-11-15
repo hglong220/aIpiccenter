@@ -102,11 +102,11 @@ export function AIToolsSidebar({ isOpen, onClose, onToolSelect, navExpanded = fa
   // 侧栏位置：从左侧导航栏打开
   const sidebarStyle: React.CSSProperties = {
     position: 'fixed',
-    top: '110px',
+    top: '155px',
     left: navExpanded ? '260px' : '84px',
     bottom: 'auto',
     width: '120px',
-    maxHeight: 'calc(100vh - 140px)',
+    maxHeight: 'calc(100vh - 185px)',
     backgroundColor: '#F9FAFB',
     boxShadow: '4px 0 24px rgba(0, 0, 0, 0.15)',
     zIndex: 999,

@@ -32,6 +32,7 @@ import {
   Pencil,
   Trash2,
   Plus,
+  Loader2,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -238,6 +239,9 @@ export default function GenerateLandingPage() {
   const [selectedAspect, setSelectedAspect] = useState<AspectOption['id']>('portrait')
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [referenceImage, setReferenceImage] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [hoveredModel, setHoveredModel] = useState<ModelOption | null>(null)
   const [hoveredSidebarIndex, setHoveredSidebarIndex] = useState<number | null>(null)
   const [isHoveringCreate, setIsHoveringCreate] = useState(false)
@@ -2316,10 +2320,58 @@ export default function GenerateLandingPage() {
   }
 
   // 聊天消息发送处理函数
+  // 处理图片上传
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      toast.error('请上传有效的图片文件')
+      return
+    }
+
+    // 验证文件大小 (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('图片大小不能超过10MB')
+      return
+    }
+
+    setIsUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || '上传失败')
+      }
+
+      const data = await response.json()
+      if (data.success && data.data) {
+        setReferenceImage(data.data.url)
+        toast.success('参考图片上传成功')
+      }
+    } catch (error) {
+      console.error('上传图片失败:', error)
+      toast.error(error instanceof Error ? error.message : '上传图片失败')
+    } finally {
+      setIsUploadingImage(false)
+      if (imageInputRef.current) {
+        imageInputRef.current.value = ''
+      }
+    }
+  }
+
   const handleSendMessage = async () => {
     const trimmed = prompt.trim()
     // 先检查输入是否为空，避免在状态检查时提前返回
-    if (!trimmed) {
+    if (!trimmed && !referenceImage) {
       return
     }
     // 检查是否正在处理中
@@ -2725,6 +2777,7 @@ export default function GenerateLandingPage() {
         body: JSON.stringify({
           prompt: trimmed,
           aspectRatio: aspectRatioMap[selectedAspect] || '1:1',
+          referenceImage: referenceImage || undefined,
         }),
       })
 
@@ -3364,23 +3417,68 @@ ${conversationContext || '(无)'}
             position: 'relative',
           }}
         >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            style={{ display: 'none' }}
+          />
           <button
-            title="上传文件"
+            title="上传参考图片"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={isUploadingImage || isGeneratingImage}
             style={{
               width: '40px',
               height: '40px',
               borderRadius: '20px',
               border: 'none',
-              backgroundColor: '#F3F4F6',
+              backgroundColor: referenceImage ? '#1A73E8' : '#F3F4F6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#1F2937',
-              cursor: 'pointer',
+              color: referenceImage ? '#ffffff' : '#1F2937',
+              cursor: isUploadingImage || isGeneratingImage ? 'not-allowed' : 'pointer',
+              opacity: isUploadingImage || isGeneratingImage ? 0.5 : 1,
             }}
           >
-            <UploadCloud style={{ width: '20px', height: '20px' }} />
+            {isUploadingImage ? (
+              <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <UploadCloud style={{ width: '20px', height: '20px' }} />
+            )}
           </button>
+          {referenceImage && (
+            <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
+              <img
+                src={referenceImage}
+                alt="参考图片"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <button
+                onClick={() => setReferenceImage(null)}
+                style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  border: 'none',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  fontSize: '10px',
+                }}
+              >
+                <X size={10} />
+              </button>
+            </div>
+          )}
           <input
             type="text"
             placeholder={isVideoView ? "描述你想要生成的视频..." : "描述你想要生成的图像..."}
@@ -3723,23 +3821,68 @@ ${conversationContext || '(无)'}
             marginTop: '-12px',
           }}
         >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            style={{ display: 'none' }}
+          />
           <button
-            title="上传文件"
+            title="上传参考图片"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={isUploadingImage || isGeneratingImage}
             style={{
               width: '40px',
               height: '40px',
               borderRadius: '20px',
               border: 'none',
-              backgroundColor: '#F3F4F6',
+              backgroundColor: referenceImage ? '#1A73E8' : '#F3F4F6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#1F2937',
-              cursor: 'pointer',
+              color: referenceImage ? '#ffffff' : '#1F2937',
+              cursor: isUploadingImage || isGeneratingImage ? 'not-allowed' : 'pointer',
+              opacity: isUploadingImage || isGeneratingImage ? 0.5 : 1,
             }}
           >
-            <UploadCloud style={{ width: '20px', height: '20px' }} />
+            {isUploadingImage ? (
+              <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <UploadCloud style={{ width: '20px', height: '20px' }} />
+            )}
           </button>
+          {referenceImage && (
+            <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
+              <img
+                src={referenceImage}
+                alt="参考图片"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              <button
+                onClick={() => setReferenceImage(null)}
+                style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  border: 'none',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  fontSize: '10px',
+                }}
+              >
+                <X size={10} />
+              </button>
+            </div>
+          )}
           <input
             type="text"
             placeholder={isImageView ? "描述你想要生成的图像..." : "How can Grok help?"}
@@ -4193,6 +4336,7 @@ ${conversationContext || '(无)'}
                     onClick={(event) => {
                       event.stopPropagation()
                       setSearchOverlayOpen(false)
+                      setHoveredSidebarIndex(null) // 清除悬停状态，隐藏指示条
                       setAiToolsSidebarOpen((prev) => !prev)
                     }}
                     style={navExpanded ? expandedStyle : collapsedStyle}
@@ -5107,23 +5251,68 @@ ${conversationContext || '(无)'}
                   boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
                 }}
               >
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                />
                 <button
-                  title="上传文件"
+                  title="上传参考图片"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={isUploadingImage || isGeneratingImage || isSendingMessage}
                   style={{
                     width: '40px',
                     height: '40px',
                     borderRadius: '20px',
                     border: 'none',
-                    backgroundColor: '#F3F4F6',
+                    backgroundColor: referenceImage ? '#1A73E8' : '#F3F4F6',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#1F2937',
-                    cursor: 'pointer',
+                    color: referenceImage ? '#ffffff' : '#1F2937',
+                    cursor: isUploadingImage || isGeneratingImage || isSendingMessage ? 'not-allowed' : 'pointer',
+                    opacity: isUploadingImage || isGeneratingImage || isSendingMessage ? 0.5 : 1,
                   }}
                 >
-                  <UploadCloud style={{ width: '20px', height: '20px' }} />
+                  {isUploadingImage ? (
+                    <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <UploadCloud style={{ width: '20px', height: '20px' }} />
+                  )}
                 </button>
+                {referenceImage && (
+                  <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
+                    <img
+                      src={referenceImage}
+                      alt="参考图片"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <button
+                      onClick={() => setReferenceImage(null)}
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#ef4444',
+                        border: 'none',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
+                        fontSize: '10px',
+                      }}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                )}
                 <input
                   type="text"
                   placeholder="How can Grok help?"
@@ -5435,12 +5624,13 @@ ${conversationContext || '(无)'}
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'center',
               padding: '20px 24px',
               borderBottom: '1px solid #e5e7eb',
+              position: 'relative',
             }}
           >
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0, textAlign: 'center' }}>
               反馈问题
             </h2>
             <button
@@ -5459,6 +5649,10 @@ ${conversationContext || '(无)'}
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#6b7280',
+                position: 'absolute',
+                right: '24px',
+                top: '50%',
+                transform: 'translateY(-50%)',
               }}
             >
               <X style={{ width: '20px', height: '20px' }} />
@@ -5565,7 +5759,7 @@ ${conversationContext || '(无)'}
               <textarea
                 value={feedbackContent}
                 onChange={(e) => setFeedbackContent(e.target.value)}
-                placeholder="请描述你遇到的问题或对 Grok 的反馈意见。"
+                placeholder="请描述你遇到的问题或对 AIpiccenter 的反馈意见。"
                 style={{
                   width: '100%',
                   minHeight: '120px',
