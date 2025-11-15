@@ -4193,6 +4193,7 @@ ${conversationContext || '(无)'}
                     onClick={(event) => {
                       event.stopPropagation()
                       setSearchOverlayOpen(false)
+                      setHoveredSidebarIndex(null) // 清除悬停状态，隐藏指示条
                       setAiToolsSidebarOpen((prev) => !prev)
                     }}
                     style={navExpanded ? expandedStyle : collapsedStyle}
@@ -5435,12 +5436,13 @@ ${conversationContext || '(无)'}
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              justifyContent: 'center',
               padding: '20px 24px',
               borderBottom: '1px solid #e5e7eb',
+              position: 'relative',
             }}
           >
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0, textAlign: 'center' }}>
               反馈问题
             </h2>
             <button
@@ -5459,6 +5461,10 @@ ${conversationContext || '(无)'}
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#6b7280',
+                position: 'absolute',
+                right: '24px',
+                top: '50%',
+                transform: 'translateY(-50%)',
               }}
             >
               <X style={{ width: '20px', height: '20px' }} />
@@ -5565,7 +5571,7 @@ ${conversationContext || '(无)'}
               <textarea
                 value={feedbackContent}
                 onChange={(e) => setFeedbackContent(e.target.value)}
-                placeholder="请描述你遇到的问题或对 Grok 的反馈意见。"
+                placeholder="请描述你遇到的问题或对 AIpiccenter 的反馈意见。"
                 style={{
                   width: '100%',
                   minHeight: '120px',
