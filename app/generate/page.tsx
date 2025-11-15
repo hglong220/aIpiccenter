@@ -17,6 +17,8 @@ import {
   HelpCircle,
   CreditCard,
   ChevronRight,
+  ChevronLeft,
+  ChevronDown,
   Mic,
   UploadCloud,
   Clock,
@@ -24,7 +26,6 @@ import {
   Star,
   X,
   Play,
-  Send,
   LogOut,
   Smartphone,
   Shield,
@@ -35,6 +36,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import toast from 'react-hot-toast'
+import { AIToolsSidebar, type AITool } from '@/components/generate/AIToolsSidebar'
 
 type ModelOption = '自动模式' | '快速模式' | '专家模式' | '图片' | '视频'
 
@@ -184,7 +187,7 @@ const sidebarIcons = [
   { icon: Search, label: '搜索', action: 'search' as const },
   { icon: MessageSquareMore, label: '聊天', href: '/generate?view=chat' },
   { icon: Image, label: '图像', href: '/generate?view=image' },
-  { icon: Sparkles, label: 'AI 工具', href: '/generate?view=tools' },
+  { icon: Sparkles, label: '工具', action: 'tools' as const },
   { icon: LayoutDashboard, label: '项目', href: '/generate?view=projects' },
   { icon: Images, label: '画廊', href: '/generate?view=gallery' },
   { icon: MessageCircle, label: '消息', href: '/generate?view=messages' },
@@ -222,6 +225,7 @@ const flatSearchItems = searchGroups.flatMap((group) =>
 export default function GenerateLandingPage() {
   const searchParams = useSearchParams()
   const view = searchParams.get('view') ?? 'chat'
+  const settingsTab = searchParams.get('tab') ?? 'overview'
   const isImageView = view === 'image'
   const isVideoView = view === 'video'
   const isChatView = view === 'chat'
@@ -232,6 +236,7 @@ export default function GenerateLandingPage() {
   const [prompt, setPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState<ModelOption>(isImageView ? '图片' : isVideoView ? '视频' : '自动模式')
   const [selectedAspect, setSelectedAspect] = useState<AspectOption['id']>('portrait')
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [hoveredModel, setHoveredModel] = useState<ModelOption | null>(null)
   const [hoveredSidebarIndex, setHoveredSidebarIndex] = useState<number | null>(null)
@@ -574,8 +579,16 @@ export default function GenerateLandingPage() {
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const navRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const feedbackTypeDropdownRef = useRef<HTMLDivElement>(null)
   const isGeminiTest = view === 'gemini-test'
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [userAvatarHovered, setUserAvatarHovered] = useState(false)
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
+  const [feedbackType, setFeedbackType] = useState<string>('')
+  const [feedbackContent, setFeedbackContent] = useState('')
+  const [feedbackTypeDropdownOpen, setFeedbackTypeDropdownOpen] = useState(false)
+  const [aiToolsSidebarOpen, setAiToolsSidebarOpen] = useState(false)
+  const [selectedAITool, setSelectedAITool] = useState<AITool | null>(null)
 
   // 格式化时间
   const formatTime = (dateString: string) => {
@@ -883,6 +896,689 @@ export default function GenerateLandingPage() {
     </div>
   )
 
+  // 渲染任务页面
+  const renderTasksView = () => {
+    if (!user) {
+      return (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '760px',
+            padding: '80px 24px',
+            textAlign: 'center',
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '16px' }}>请先登录以查看任务。</p>
+          <Link
+            href="/auth"
+            style={{
+              padding: '10px 22px',
+              borderRadius: '999px',
+              backgroundColor: '#1A73E8',
+              color: '#ffffff',
+              textDecoration: 'none',
+              fontSize: '14px',
+              fontWeight: 600,
+            }}
+          >
+            去登录
+          </Link>
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>任务</h1>
+            <nav
+              style={{
+                display: 'flex',
+                gap: '20px',
+                marginTop: '16px',
+                fontSize: '14px',
+                color: '#6b7280',
+              }}
+            >
+              <span style={{ color: '#111827', fontWeight: 600, paddingBottom: '6px', borderBottom: '2px solid #111827' }}>我的任务</span>
+              <span>已完成</span>
+              <span>已归档</span>
+            </nav>
+          </div>
+          <button
+            onClick={() => {
+              // 创建新任务
+              toast.success('创建任务功能开发中')
+            }}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '999px',
+              border: '1px solid #e5e7eb',
+              backgroundColor: '#ffffff',
+              color: '#111827',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span style={{ fontSize: '16px', lineHeight: 1 }}>＋</span>
+            新建任务
+          </button>
+        </header>
+
+        <section
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+            padding: '32px 36px 36px',
+          }}
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>我的任务</h2>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+              }}
+            >
+              <Clock style={{ width: '24px', height: '24px', color: '#1A73E8', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                  任务管理功能
+                </div>
+                <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                  任务功能正在开发中。您可以在这里创建、管理和跟踪您的任务。
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  // 渲染文件页面
+  const renderFilesView = () => {
+    if (!user) {
+      return (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '760px',
+            padding: '80px 24px',
+            textAlign: 'center',
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '16px' }}>请先登录以查看文件。</p>
+          <Link
+            href="/auth"
+            style={{
+              padding: '10px 22px',
+              borderRadius: '999px',
+              backgroundColor: '#1A73E8',
+              color: '#ffffff',
+              textDecoration: 'none',
+              fontSize: '14px',
+              fontWeight: 600,
+            }}
+          >
+            去登录
+          </Link>
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>文件</h1>
+            <nav
+              style={{
+                display: 'flex',
+                gap: '20px',
+                marginTop: '16px',
+                fontSize: '14px',
+                color: '#6b7280',
+              }}
+            >
+              <span style={{ color: '#111827', fontWeight: 600, paddingBottom: '6px', borderBottom: '2px solid #111827' }}>我的文件</span>
+              <span>共享文件</span>
+              <span>最近上传</span>
+            </nav>
+          </div>
+          <button
+            onClick={() => {
+              // 上传文件
+              toast.success('文件上传功能开发中')
+            }}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '999px',
+              border: '1px solid #e5e7eb',
+              backgroundColor: '#ffffff',
+              color: '#111827',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <UploadCloud style={{ width: '16px', height: '16px' }} />
+            上传文件
+          </button>
+        </header>
+
+        <section
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+            padding: '32px 36px 36px',
+          }}
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>我的文件</h2>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+              }}
+            >
+              <Tag style={{ width: '24px', height: '24px', color: '#1A73E8', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                  文件管理功能
+                </div>
+                <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                  文件功能正在开发中。您可以在这里上传、管理和分享您的文件。
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  // 渲染帮助页面
+  const renderHelpView = () => {
+    return (
+      <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        <header>
+          <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>帮助</h1>
+          <nav
+            style={{
+              display: 'flex',
+              gap: '20px',
+              marginTop: '16px',
+              fontSize: '14px',
+              color: '#6b7280',
+            }}
+          >
+            <span style={{ color: '#111827', fontWeight: 600, paddingBottom: '6px', borderBottom: '2px solid #111827' }}>入门指南</span>
+            <span>常见问题</span>
+            <span>联系我们</span>
+          </nav>
+        </header>
+
+        <section
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+            padding: '32px 36px 36px',
+          }}
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>快速上手</h2>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+              }}
+            >
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                如何开始使用 AI Pic Center？
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                注册账号后，您可以在"生成"页面输入提示词来生成图像或视频。使用信用点来支付生成费用。
+              </p>
+            </div>
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+              }}
+            >
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                如何获取更多信用点？
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                您可以在"升级套餐"页面购买订阅计划或单独充值信用点。不同套餐提供不同的信用点额度。
+              </p>
+            </div>
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+              }}
+            >
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                如何联系客服？
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                您可以发送邮件至 <a href="mailto:service@aipiccenter.com" style={{ color: '#1A73E8', textDecoration: 'none' }}>service@aipiccenter.com</a>，我们的客服团队会在24小时内回复您。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+            padding: '32px 36px 36px',
+          }}
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>常见问题</h2>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+              }}
+            >
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                生成的图像可以商用吗？
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                是的，您生成的图像可以用于商业用途。但请注意遵守相关法律法规和平台使用条款。
+              </p>
+            </div>
+            <div
+              style={{
+                padding: '20px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '12px',
+                backgroundColor: '#F9FAFB',
+              }}
+            >
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                信用点会过期吗？
+              </div>
+              <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
+                订阅套餐赠送的信用点会在订阅到期时失效。单独购买的信用点永久有效。
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  // 渲染升级套餐页面
+  const renderSubscriptionView = () => {
+    if (!user) {
+      return (
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '800px',
+            padding: '120px 24px',
+            textAlign: 'center',
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e5e7eb',
+          }}
+        >
+          <h2 style={{ fontSize: '24px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>订阅管理</h2>
+          <p style={{ fontSize: '15px', color: '#6b7280', marginBottom: '24px' }}>请先登录以查看和管理您的订阅套餐。</p>
+          <Link
+            href="/auth"
+            style={{
+              display: 'inline-block',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              backgroundColor: '#111827',
+              color: '#ffffff',
+              textDecoration: 'none',
+              fontSize: '14px',
+              fontWeight: 600,
+              transition: 'background-color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#1f2937'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#111827'
+            }}
+          >
+            立即登录
+          </Link>
+        </div>
+      )
+    }
+
+    const planLabel = planLabels[user.plan] ?? (user.plan || '免费版')
+    const planExpire = user.planExpiresAt ? new Date(user.planExpiresAt).toLocaleDateString('zh-CN') : '长期有效'
+    const isEnterprise = user.plan === 'enterprise'
+
+    const plans = [
+      {
+        label: '入门版',
+        monthlyPrice: 112,
+        originalMonthlyPrice: 133,
+        yearlyPrice: 1344,
+        monthlySave: 21,
+        computePower: 2000,
+        firstPurchaseBonus: 2000,
+        features: [
+          '每日获得 100 AI 能力积分',
+          '访问所有图像生成能力：提供写实风格、国潮风、手绘插画、写意水墨、动漫风格等多模型支持',
+          '访问所有视频生成能力：支持文本生成视频、图片生成视频、动态场景合成、运镜控制',
+          '商用授权',
+          '支持元素编辑、局部重绘、画质增强',
+        ],
+      },
+      {
+        label: '基础版',
+        monthlyPrice: 189,
+        originalMonthlyPrice: 224,
+        yearlyPrice: 2268,
+        monthlySave: 35,
+        computePower: 3500,
+        firstPurchaseBonus: 3500,
+        features: [
+          '每日获得 100 AI 能力积分',
+          '高级图像生成能力：高清写实、电影光效、国风艺术、专业级插画模型',
+          '高级视频生成能力：更长时长、更高清晰度、更自然的动作生成',
+          '支持图像→视频的时序补帧',
+          '商用授权',
+          '支持元素编辑与画面调优',
+        ],
+      },
+      {
+        label: '专业版',
+        monthlyPrice: 518,
+        originalMonthlyPrice: 630,
+        yearlyPrice: 6216,
+        monthlySave: 112,
+        computePower: 11000,
+        firstPurchaseBonus: 11000,
+        features: [
+          '每日获得 100 AI 能力积分',
+          '全面访问平台所有图像生成模型：多风格、高清晰度、专业级绘画模型',
+          '全面访问所有视频生成模型：动态镜头、角色驱动、场景模拟、长视频生成',
+          '提供专业级画质修复、模型增强、超分辨率处理',
+          '商用授权',
+          '支持所有编辑功能',
+          '获得充值积分额外赠送优惠',
+        ],
+      },
+      {
+        label: '旗舰版',
+        monthlyPrice: 1162,
+        originalMonthlyPrice: 1393,
+        yearlyPrice: 13944,
+        monthlySave: 231,
+        computePower: 27000,
+        firstPurchaseBonus: 27000,
+        features: [
+          '每日获得 100 AI 能力积分',
+          '顶级图像生成能力：高分辨率、多风格融合、艺术级渲染模型',
+          '顶级视频生成能力：电影级动态、复杂动作连贯、长时序生成、镜头调度',
+          '企业级画质增强、视频修复、专业后期处理',
+          '商用授权',
+          '所有编辑能力全量开放',
+          '充值积分享受 9 折优惠',
+        ],
+      },
+    ]
+
+    return (
+      <div style={{ width: '100%', maxWidth: '1400px', display: 'flex', flexDirection: 'column', gap: '32px', marginTop: '100px' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ fontSize: '96px', fontWeight: 700, color: '#111827', margin: 0, marginBottom: '24px' }}>订阅计划与价格</h1>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#f3f4f6', borderRadius: '8px', padding: '4px' }}>
+            <button
+              onClick={() => setBillingPeriod('monthly')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: billingPeriod === 'monthly' ? '#111827' : 'transparent',
+                color: billingPeriod === 'monthly' ? '#ffffff' : '#6b7280',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              月付
+            </button>
+            <button
+              onClick={() => setBillingPeriod('yearly')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: billingPeriod === 'yearly' ? '#111827' : 'transparent',
+                color: billingPeriod === 'yearly' ? '#ffffff' : '#6b7280',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              年付 免费2个月
+            </button>
+          </div>
+        </div>
+
+        {/* Plans Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          {plans.map((plan) => {
+            const currentPrice = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice / 12
+            const originalPrice = billingPeriod === 'monthly' ? plan.originalMonthlyPrice : plan.originalMonthlyPrice
+            const saveAmount = billingPeriod === 'monthly' ? plan.monthlySave : plan.monthlySave * 12
+
+            return (
+              <div
+                key={plan.label}
+                style={{
+                  padding: '24px',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '12px',
+                  backgroundColor: '#ffffff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                {/* Plan Label */}
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#f3f4f6',
+                      color: '#111827',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      width: 'fit-content',
+                    }}
+                  >
+                    {plan.label}
+                  </div>
+                </div>
+
+                {/* Price */}
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '32px', fontWeight: 700, color: '#111827' }}>
+                      ￥{billingPeriod === 'monthly' ? plan.monthlyPrice : Math.round(plan.yearlyPrice / 12)}
+                    </span>
+                    {billingPeriod === 'monthly' && (
+                      <>
+                        <span style={{ fontSize: '12px', color: '#111827', fontWeight: 600 }}>每月节省￥{plan.monthlySave}</span>
+                        <span style={{ fontSize: '14px', color: '#6b7280', textDecoration: 'line-through' }}>
+                          /月 ￥{plan.originalMonthlyPrice}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Compute Power */}
+                <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: '14px', color: '#111827', marginBottom: '8px' }}>
+                    每月{plan.computePower}积分
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#111827' }}>
+                    首购额外{plan.firstPurchaseBonus}积分
+                    <span
+                      style={{
+                        marginLeft: '6px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      限时优惠
+                    </span>
+                  </div>
+                </div>
+
+                {/* Features */}
+                <div style={{ flex: 1, marginBottom: '20px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>
+                    功能特色
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#111827', lineHeight: '1.8' }}>
+                    {plan.features.map((feature, idx) => {
+                      if (typeof feature === 'string') {
+                        return (
+                          <div key={idx} style={{ marginBottom: '6px', display: 'flex', alignItems: 'flex-start' }}>
+                            <span style={{ color: '#111827', marginRight: '8px', flexShrink: 0, marginTop: '2px' }}>✓</span>
+                            <span style={{ flex: 1 }}>{feature}</span>
+                          </div>
+                        )
+                      } else {
+                        return (
+                          <div key={idx} style={{ marginBottom: '6px', display: 'flex', alignItems: 'flex-start' }}>
+                            <span style={{ color: '#111827', marginRight: '8px', flexShrink: 0, marginTop: '2px' }}>✓</span>
+                            <span style={{ flex: 1 }}>{feature.text}</span>
+                          </div>
+                        )
+                      }
+                    })}
+                  </div>
+                </div>
+
+                {/* Upgrade Button */}
+                <button
+                  style={{
+                    width: '100%',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#f3f4f6',
+                    color: '#111827',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#e5e7eb'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6'
+                  }}
+                >
+                  升级
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   const renderSettingsView = () => {
     if (!user) {
       return (
@@ -920,77 +1616,280 @@ export default function GenerateLandingPage() {
     const planLabel = planLabels[user.plan] ?? (user.plan || '免费版')
     const planExpire = user.planExpiresAt ? new Date(user.planExpiresAt).toLocaleDateString('zh-CN') : '长期有效'
 
-    return (
-      <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>我的账户</h1>
-            <nav
+    // 根据不同的 tab 渲染不同的内容
+    const renderSettingsContent = () => {
+      switch (settingsTab) {
+        case 'subscription':
+          return (
+            <section
               style={{
-                display: 'flex',
-                gap: '20px',
-                marginTop: '16px',
-                fontSize: '14px',
-                color: '#6b7280',
+                backgroundColor: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+                padding: '32px 36px 36px',
               }}
             >
-              <span style={{ color: '#111827', fontWeight: 600, paddingBottom: '6px', borderBottom: '2px solid #111827' }}>账户总览</span>
-              <span>订阅权益</span>
-              <span>安全设置</span>
-            </nav>
-          </div>
-          <button
-            onClick={() => router.push('/pricing')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '999px',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#ffffff',
-              color: '#111827',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span style={{ fontSize: '16px', lineHeight: 1 }}>＋</span>
-            升级计划
-          </button>
-        </header>
-
-        <section
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '18px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
-            padding: '32px 36px 36px',
-          }}
-        >
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '16px' }}>账户信息总览</h2>
-          <ul style={{ listStyle: 'disc', paddingLeft: '20px', color: '#374151', lineHeight: 1.7, fontSize: '14px' }}>
-            <li>
-              <strong>登录手机号：</strong>
-              {user.phone}
-            </li>
-            <li>
-              <strong>用户名：</strong>
-              {user.username || '未设置'}
-            </li>
-            <li>
-              <strong>当前订阅：</strong>
-              {planLabel}（到期时间：{planExpire}）
-            </li>
-            <li>
-              <strong>账户信用点：</strong>
-              {user.credits} 点，可用于图像/视频生成
-            </li>
-          </ul>
-          <p style={{ marginTop: '16px', fontSize: '14px', color: '#4b5563', lineHeight: 1.7 }}>
-            这是您在 AI Pic Center 的账户中心，所有基础资料、订阅计划与信用点都会保存在这里。想要扩充额度或升级团队协作能力，随时可以点击右上角的"升级计划"。
-          </p>
+              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>订阅权益</h2>
+              <div
+                style={{
+                  padding: '24px',
+                  border: '2px solid #1A73E8',
+                  borderRadius: '12px',
+                  backgroundColor: '#EEF2FF',
+                  marginBottom: '24px',
+                }}
+              >
+                <div style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>
+                  当前套餐：{planLabel}
+                </div>
+                <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
+                  有效期至：{planExpire}
+                </div>
+                <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                  当前信用点：{user.credits} 点
+                </div>
+              </div>
+              <Link
+                href="/pricing"
+                style={{
+                  display: 'inline-block',
+                  padding: '12px 24px',
+                  borderRadius: '999px',
+                  backgroundColor: '#1A73E8',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
+              >
+                升级套餐
+              </Link>
+            </section>
+          )
+        case 'security':
+          return (
+            <section
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+                padding: '32px 36px 36px',
+              }}
+            >
+              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>安全设置</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '20px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#F9FAFB',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                      登录手机号
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                      {user.phone}
+                    </div>
+                  </div>
+                  <button
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      backgroundColor: '#ffffff',
+                      color: '#111827',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => toast.success('修改手机号功能开发中')}
+                  >
+                    修改
+                  </button>
+                </div>
+                <div
+                  style={{
+                    padding: '20px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#F9FAFB',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                      账户安全
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                      使用验证码登录，无需密码
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#16A34A', fontWeight: 600 }}>
+                    已启用
+                  </div>
+                </div>
+              </div>
+            </section>
+          )
+        case 'preferences':
+          return (
+            <section
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+                padding: '32px 36px 36px',
+              }}
+            >
+              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>偏好设置</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '20px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#F9FAFB',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                      默认生成模式
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                      选择默认的图像生成模式
+                    </div>
+                  </div>
+                  <select
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #e5e7eb',
+                      backgroundColor: '#ffffff',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                    defaultValue="auto"
+                    onChange={(e) => toast.success(`已设置为：${e.target.value}`)}
+                  >
+                    <option value="auto">自动模式</option>
+                    <option value="fast">快速模式</option>
+                    <option value="expert">专家模式</option>
+                  </select>
+                </div>
+                <div
+                  style={{
+                    padding: '20px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    backgroundColor: '#F9FAFB',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
+                      邮件通知
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                      接收重要通知和更新
+                    </div>
+                  </div>
+                  <label
+                    style={{
+                      position: 'relative',
+                      display: 'inline-block',
+                      width: '44px',
+                      height: '24px',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      style={{
+                        opacity: 0,
+                        width: 0,
+                        height: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        cursor: 'pointer',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: '#1A73E8',
+                        borderRadius: '24px',
+                        transition: '0.3s',
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </section>
+          )
+        default: // overview
+          return (
+            <>
+              <section
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '18px',
+                  border: '1px solid #e5e7eb',
+                  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+                  padding: '32px 36px 36px',
+                }}
+              >
+                <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '16px' }}>账户信息总览</h2>
+                <ul style={{ listStyle: 'disc', paddingLeft: '20px', color: '#374151', lineHeight: 1.7, fontSize: '14px' }}>
+                  <li>
+                    <strong>登录手机号：</strong>
+                    {user.phone}
+                  </li>
+                  <li>
+                    <strong>用户名：</strong>
+                    {user.username || '未设置'}
+                  </li>
+                  <li>
+                    <strong>当前订阅：</strong>
+                    {planLabel}（到期时间：{planExpire}）
+                  </li>
+                  <li>
+                    <strong>账户信用点：</strong>
+                    {user.credits} 点，可用于图像/视频生成
+                  </li>
+                </ul>
+                <p style={{ marginTop: '16px', fontSize: '14px', color: '#4b5563', lineHeight: 1.7 }}>
+                  这是您在 AI Pic Center 的账户中心，所有基础资料、订阅计划与信用点都会保存在这里。想要扩充额度或升级团队协作能力，随时可以点击右上角的"升级计划"。
+                </p>
 
           <div
             style={{
@@ -1080,77 +1979,153 @@ export default function GenerateLandingPage() {
               </div>
             </div>
           </div>
-        </section>
+              </section>
 
-        <section
-          style={{
-            backgroundColor: '#ffffff',
-            borderRadius: '18px',
-            border: '1px solid #e5e7eb',
-            padding: '28px 32px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-          }}
-        >
-          <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>常用操作</h3>
-          <div
+              <section
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '18px',
+                  border: '1px solid #e5e7eb',
+                  padding: '28px 32px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}
+              >
+                <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>常用操作</h3>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                  }}
+                >
+                  <Link
+                    href="/generate?view=subscription"
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '10px',
+                      border: '1px solid #DBEAFE',
+                      backgroundColor: '#EEF2FF',
+                      color: '#1A73E8',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    查看订阅权益
+                  </Link>
+                  <Link
+                    href="/generate?view=feedback"
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '10px',
+                      border: '1px solid #FCE7F3',
+                      backgroundColor: '#FFF1F9',
+                      color: '#DB2777',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    反馈
+                  </Link>
+                </div>
+                <p style={{ fontSize: '13px', color: '#6b7280' }}>
+                  如需企业版开通、发票或更多自定义支持，可发送邮件至 <a href="mailto:service@aipiccenter.com" style={{ color: '#1A73E8', textDecoration: 'none' }}>service@aipiccenter.com</a>，我们的客户成功团队会尽快联系您。
+                </p>
+              </section>
+            </>
+          )
+      }
+    }
+
+    return (
+      <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>我的账户</h1>
+            <nav
+              style={{
+                display: 'flex',
+                gap: '20px',
+                marginTop: '16px',
+                fontSize: '14px',
+                color: '#6b7280',
+              }}
+            >
+              <span 
+                style={{ 
+                  color: settingsTab === 'overview' ? '#111827' : '#6b7280', 
+                  fontWeight: settingsTab === 'overview' ? 600 : 400,
+                  paddingBottom: '6px', 
+                  borderBottom: settingsTab === 'overview' ? '2px solid #111827' : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => router.replace('/generate?view=settings&tab=overview')}
+              >
+                账户总览
+              </span>
+              <span 
+                style={{ 
+                  color: settingsTab === 'subscription' ? '#111827' : '#6b7280', 
+                  fontWeight: settingsTab === 'subscription' ? 600 : 400,
+                  paddingBottom: '6px', 
+                  borderBottom: settingsTab === 'subscription' ? '2px solid #111827' : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => router.replace('/generate?view=settings&tab=subscription')}
+              >
+                订阅权益
+              </span>
+              <span 
+                style={{ 
+                  color: settingsTab === 'security' ? '#111827' : '#6b7280', 
+                  fontWeight: settingsTab === 'security' ? 600 : 400,
+                  paddingBottom: '6px', 
+                  borderBottom: settingsTab === 'security' ? '2px solid #111827' : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => router.replace('/generate?view=settings&tab=security')}
+              >
+                安全设置
+              </span>
+              <span 
+                style={{ 
+                  color: settingsTab === 'preferences' ? '#111827' : '#6b7280', 
+                  fontWeight: settingsTab === 'preferences' ? 600 : 400,
+                  paddingBottom: '6px', 
+                  borderBottom: settingsTab === 'preferences' ? '2px solid #111827' : 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => router.replace('/generate?view=settings&tab=preferences')}
+              >
+                偏好设置
+              </span>
+            </nav>
+          </div>
+          <button
+            onClick={() => router.push('/pricing')}
             style={{
+              padding: '10px 18px',
+              borderRadius: '999px',
+              border: '1px solid #e5e7eb',
+              backgroundColor: '#ffffff',
+              color: '#111827',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: 'pointer',
               display: 'flex',
-              flexWrap: 'wrap',
-              gap: '12px',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            <Link
-              href="/generate?view=subscription"
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #DBEAFE',
-                backgroundColor: '#EEF2FF',
-                color: '#1A73E8',
-                fontSize: '13px',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              查看订阅权益
-            </Link>
-            <Link
-              href="/generate?view=help"
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #FCE7F3',
-                backgroundColor: '#FFF1F9',
-                color: '#DB2777',
-                fontSize: '13px',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              访问帮助中心
-            </Link>
-            <Link
-              href="/generate?view=messages"
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #FEF3C7',
-                backgroundColor: '#FFFBEB',
-                color: '#B45309',
-                fontSize: '13px',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              查看通知与消息
-            </Link>
-          </div>
-          <p style={{ fontSize: '13px', color: '#6b7280' }}>
-            如需企业版开通、发票或更多自定义支持，可发送邮件至 <a href="mailto:service@aipiccenter.com" style={{ color: '#1A73E8', textDecoration: 'none' }}>service@aipiccenter.com</a>，我们的客户成功团队会尽快联系您。
-          </p>
-        </section>
+            <span style={{ fontSize: '16px', lineHeight: 1 }}>＋</span>
+            升级计划
+          </button>
+        </header>
+
+        {renderSettingsContent()}
       </div>
     )
   }
@@ -1166,6 +2141,14 @@ export default function GenerateLandingPage() {
       setUserMenuOpen(false)
     }
   }, [navExpanded])
+
+  // 监听路由变化，确保设置页面正确显示
+  useEffect(() => {
+    if (view === 'settings') {
+      // 确保设置页面显示时关闭用户菜单
+      setUserMenuOpen(false)
+    }
+  }, [view])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1184,12 +2167,63 @@ export default function GenerateLandingPage() {
   }, [userMenuOpen])
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        feedbackTypeDropdownRef.current &&
+        !feedbackTypeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setFeedbackTypeDropdownOpen(false)
+      }
+    }
+
+    if (feedbackTypeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [feedbackTypeDropdownOpen])
+
+  useEffect(() => {
     const shouldLock = searchOverlayOpen
     document.body.style.overflow = shouldLock ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
   }, [searchOverlayOpen])
+
+  // 当 view 变化时关闭 AI 工具侧栏
+  useEffect(() => {
+    if (view !== 'tools') {
+      setAiToolsSidebarOpen(false)
+    }
+  }, [view])
+
+  // 点击外部区域关闭工具侧栏
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      
+      // 检查点击是否在导航栏内部
+      const clickedOnNav = navRef.current && (navRef.current.contains(target) || navRef.current === target)
+      
+      // 检查点击是否在侧栏内部（通过查找包含特定类名或样式的元素）
+      const sidebarElement = document.querySelector('[data-ai-tools-sidebar]')
+      const clickedOnSidebar = sidebarElement && (sidebarElement.contains(target) || sidebarElement === target)
+      
+      if (!clickedOnNav && !clickedOnSidebar && aiToolsSidebarOpen) {
+        setAiToolsSidebarOpen(false)
+      }
+    }
+
+    if (aiToolsSidebarOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }
+  }, [aiToolsSidebarOpen])
 
   useEffect(() => {
     if (searchOverlayOpen) {
@@ -1377,7 +2411,6 @@ export default function GenerateLandingPage() {
 
     // 构建对话上下文
     const conversationSnapshot = [...chatMessages, userMessage]
-      .filter((message) => message.sender !== 'system')
       .map((message) => `${message.sender === 'user' ? '用户' : 'Grok'}：${message.text}`)
       .join('\n')
 
@@ -1517,6 +2550,7 @@ export default function GenerateLandingPage() {
                   console.log('[Chat] Parsing data line:', jsonStr.substring(0, 100))
                   const data = JSON.parse(jsonStr)
                   const text = (data as { text?: string })?.text || ''
+                  const error = (data as { error?: string })?.error
 
                   if (text) {
                     accumulatedText += text
@@ -1534,7 +2568,23 @@ export default function GenerateLandingPage() {
                           : message,
                       ),
                     )
-                  } else {
+                  } else if (error && !accumulatedText) {
+                    // 如果有错误且没有累积文本，显示错误
+                    console.error('[Chat] Stream error:', error)
+                    accumulatedText = `错误: ${error}`
+                    setChatMessages((prev) =>
+                      prev.map((message) =>
+                        message.id === placeholderId
+                          ? {
+                              ...message,
+                              text: accumulatedText,
+                              status: 'failed',
+                              timestamp: new Date().toISOString(),
+                            }
+                          : message,
+                      ),
+                    )
+                  } else if (!text && !error) {
                     console.warn('[Chat] Empty text in data chunk:', data)
                   }
                 } catch (e) {
@@ -1886,24 +2936,21 @@ export default function GenerateLandingPage() {
       router.push(`/generate?view=image&chatId=${chatId}`)
     }
     
-    // 保存用户消息到数据库
-    try {
-      await fetch(`/api/chats/${chatId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role: 'user',
-          content: trimmedPrompt,
-        }),
-      })
-    } catch (error) {
+    // 异步保存用户消息到数据库（不阻塞API调用）
+    void fetch(`/api/chats/${chatId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: 'user',
+        content: trimmedPrompt,
+      }),
+    }).catch((error) => {
       console.error('保存用户消息失败:', error)
-    }
+    })
     
     try {
       // 构建对话上下文
       const conversationContext = imageChatMessages
-        .filter((msg) => msg.sender !== 'system')
         .slice(-10) // 取最近10条消息作为上下文，让 Gemini 有更多上下文理解
         .map((msg) => `${msg.sender === 'user' ? '用户' : '助手'}: ${msg.text}`)
         .join('\n')
@@ -1934,7 +2981,7 @@ ${conversationContext || '(无)'}
         credentials: 'include',
         body: JSON.stringify({ 
           prompt: systemPrompt,
-          stream: false, // 不使用流式响应，因为需要完整判断
+          stream: true, // 启用流式响应，提升响应速度
         }),
       })
 
@@ -1942,34 +2989,137 @@ ${conversationContext || '(无)'}
         throw new Error('API 调用失败')
       }
 
-      const data = await response.json()
-      const geminiReply = data?.text?.trim() || ''
+      // 检查是否是流式响应
+      const contentType = response.headers.get('content-type')
+      let geminiReply = ''
       
-      // 完全信任 Gemini 的回复，直接显示
-      setIsGeneratingImage(false)
-      
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        sender: 'assistant',
-        text: geminiReply || '抱歉，我无法理解您的意思。',
-        timestamp: new Date().toISOString(),
-        status: 'sent',
-      }
-      
-      setImageChatMessages((prev) => [...prev, assistantMessage])
-      
-      // 保存助手消息到数据库
-      try {
-        await fetch(`/api/chats/${chatId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'assistant',
-            content: geminiReply || '抱歉，我无法理解您的意思。',
-          }),
-        })
-      } catch (error) {
-        console.error('保存助手消息失败:', error)
+      if (contentType?.includes('text/event-stream')) {
+        // 流式响应处理
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        
+        if (!reader) {
+          throw new Error('无法读取流式响应')
+        }
+        
+        // 创建助手消息占位符
+        const assistantMessageId = `assistant-${Date.now()}`
+        const assistantMessage: ChatMessage = {
+          id: assistantMessageId,
+          sender: 'assistant',
+          text: '',
+          timestamp: new Date().toISOString(),
+          status: 'sending',
+        }
+        
+        setImageChatMessages((prev) => [...prev, assistantMessage])
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            
+            if (done) {
+              setIsGeneratingImage(false)
+              // 更新消息状态为已发送
+              setImageChatMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, status: 'sent' as const }
+                    : msg,
+                ),
+              )
+              
+              // 异步保存助手消息到数据库（不阻塞）
+              if (chatId && geminiReply) {
+                void fetch(`/api/chats/${chatId}/messages`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    role: 'assistant',
+                    content: geminiReply,
+                  }),
+                }).catch((error) => {
+                  console.error('保存助手消息失败:', error)
+                })
+              }
+              
+              break
+            }
+            
+            const chunk = decoder.decode(value, { stream: true })
+            const lines = chunk.split('\n').filter((line) => line.trim() !== '')
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6)
+                  const data = JSON.parse(jsonStr)
+                  const text = (data as { text?: string })?.text || ''
+                  
+                  if (text) {
+                    geminiReply += text
+                    // 实时更新消息文本
+                    setImageChatMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, text: geminiReply }
+                          : msg,
+                      ),
+                    )
+                  }
+                } catch (e) {
+                  // 忽略解析错误
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('流式响应读取错误:', error)
+          setIsGeneratingImage(false)
+          setImageChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    text: '抱歉，处理您的消息时出现了问题。请稍后再试。',
+                    status: 'failed' as const,
+                  }
+                : msg,
+            ),
+          )
+        } finally {
+          reader.releaseLock()
+        }
+      } else {
+        // 非流式响应（回退方案）
+        const data = await response.json()
+        geminiReply = data?.text?.trim() || ''
+        
+        setIsGeneratingImage(false)
+        
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          sender: 'assistant',
+          text: geminiReply || '抱歉，我无法理解您的意思。',
+          timestamp: new Date().toISOString(),
+          status: 'sent',
+        }
+        
+        setImageChatMessages((prev) => [...prev, assistantMessage])
+        
+        // 异步保存助手消息到数据库（不阻塞）
+        if (chatId && geminiReply) {
+          void fetch(`/api/chats/${chatId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              role: 'assistant',
+              content: geminiReply,
+            }),
+          }).catch((error) => {
+            console.error('保存助手消息失败:', error)
+          })
+        }
       }
       
       // 检查 Gemini 的回复中是否明确表达了要生成图像的意图
@@ -2104,12 +3254,11 @@ ${conversationContext || '(无)'}
           width: '100%',
           maxWidth: '800px',
           margin: '0 auto',
-          transform: 'translateX(20px)',
-          padding: '24px 28px',
+          padding: '32px 20px',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px',
+          gap: '20px',
           minHeight: 0,
           height: '100%',
         }}
@@ -2125,7 +3274,6 @@ ${conversationContext || '(无)'}
                 alignItems: isUser ? 'flex-end' : 'flex-start',
                 flexDirection: 'column',
                 gap: '6px',
-                marginLeft: isUser ? '-113px' : '-33px',
               }}
             >
               <div
@@ -2140,16 +3288,19 @@ ${conversationContext || '(无)'}
                   {message.text && (
                     <div
                       style={{
-                        padding: '12px 18px',
+                        padding: '14px 18px',
                         borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                         backgroundColor: 'transparent',
-                        color: '#111827',
+                        color: '#1f2937',
                         fontSize: '15px',
                         lineHeight: 1.7,
+                        fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                         boxShadow: 'none',
                         border: 'none',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
+                        letterSpacing: '0.01em',
+                        fontWeight: 400,
                       }}
                     >
                       {message.text}
@@ -2210,6 +3361,7 @@ ${conversationContext || '(无)'}
             background: '#ffffff',
             boxShadow: '0 12px 38px rgba(0, 0, 0, 0.08)',
             marginTop: '-12px',
+            position: 'relative',
           }}
         >
           <button
@@ -2248,30 +3400,11 @@ ${conversationContext || '(无)'}
               flex: 1,
               border: 'none',
               outline: 'none',
-              fontSize: '16px',
+              fontSize: '13px',
               color: '#111827',
             }}
           />
-          <button
-            onClick={() => void handleSendMessage()}
-            disabled={!prompt.trim() || isGeneratingImage || isSendingMessage}
-            title={isVideoView ? "生成视频" : "生成图像"}
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '18px',
-              border: 'none',
-              backgroundColor: '#F3F4F6',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#1F2937',
-              cursor: !prompt.trim() || isGeneratingImage ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Send style={{ width: '18px', height: '18px' }} />
-          </button>
-          <div style={{ position: 'relative' }} ref={modelMenuRef}>
+          <div style={{ position: 'relative', marginTop: '-3px' }} ref={modelMenuRef}>
             <button
               onClick={() => setModelMenuOpen((prev) => !prev)}
               style={{
@@ -2287,6 +3420,7 @@ ${conversationContext || '(无)'}
                 cursor: 'pointer',
                 fontWeight: 500,
                 transition: 'all 0.2s ease',
+                lineHeight: '1',
               }}
             >
               {isVideoView ? (
@@ -2294,7 +3428,7 @@ ${conversationContext || '(无)'}
               ) : (
                 <Images style={{ width: '16px', height: '16px' }} />
               )}
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>{isVideoView ? '视频' : '图片'}</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Inter, system-ui, sans-serif' }}>{isVideoView ? '视频' : '图片'}</span>
               <ChevronRight
                 style={{
                   width: '14px',
@@ -2308,7 +3442,7 @@ ${conversationContext || '(无)'}
               <div
                 style={{
                   position: 'absolute',
-                  bottom: 'calc(100% + 8px)',
+                  bottom: 'calc(100% + 13px)',
                   left: '50%',
                   transform: 'translateX(-50%)',
                   display: 'flex',
@@ -2457,12 +3591,11 @@ ${conversationContext || '(无)'}
           width: '100%',
           maxWidth: '800px',
           margin: '0 auto',
-          transform: 'translateX(20px)',
-          padding: '24px 28px',
+          padding: '32px 20px',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px',
+          gap: '20px',
           minHeight: 0,
           height: '100%',
         }}
@@ -2480,23 +3613,25 @@ ${conversationContext || '(无)'}
                 alignItems: isUser ? 'flex-end' : 'flex-start',
                 flexDirection: 'column',
                 gap: '6px',
-                marginLeft: isUser ? '-113px' : '-33px',
               }}
             >
               {message.text && (
                 <div
                   style={{
                     maxWidth: isUser ? '72%' : '100%',
-                    padding: '12px 18px',
+                    padding: '14px 18px',
                     borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
                     backgroundColor: 'transparent',
-                    color: '#111827',
+                    color: '#1f2937',
                     fontSize: '15px',
                     lineHeight: 1.7,
+                    fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                     boxShadow: 'none',
                     border: 'none',
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
+                    letterSpacing: '0.01em',
+                    fontWeight: 400,
                   }}
                 >
                   {message.text}
@@ -2620,29 +3755,10 @@ ${conversationContext || '(无)'}
               flex: 1,
               border: 'none',
               outline: 'none',
-              fontSize: '16px',
+              fontSize: '13px',
               color: '#111827',
             }}
           />
-          <button
-            onClick={() => void handleSendMessage()}
-            disabled={!prompt.trim() || isSendingMessage || isGeneratingImage}
-            title="发送消息"
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '18px',
-              border: 'none',
-              backgroundColor: '#F3F4F6',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#1F2937',
-              cursor: !prompt.trim() || isSendingMessage ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Send style={{ width: '18px', height: '18px' }} />
-          </button>
           <div style={{ position: 'relative' }} ref={modelMenuRef}>
             <button
               onClick={() => setModelMenuOpen((prev) => !prev)}
@@ -2862,6 +3978,7 @@ ${conversationContext || '(无)'}
   )
 
   return (
+    <>
     <main
       style={{
         display: 'flex',
@@ -2901,35 +4018,41 @@ ${conversationContext || '(无)'}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: navExpanded ? '12px' : '16px', alignItems: navExpanded ? 'stretch' : 'center', paddingTop: navExpanded ? '0' : '20px' }}>
           {sidebarIcons.map((item, index) => {
-            const Icon = item.icon
-            const isSearch = item.action === 'search'
+            const itemTyped = item as { icon: any; label: string; action?: 'search' | 'tools'; href?: string; expandedLabel?: string; hideIconWhenExpanded?: boolean; collapsedIcon?: React.ReactNode; nonInteractive?: boolean }
+            const Icon = itemTyped.icon
+            const isSearch = itemTyped.action === 'search'
+            const isTools = itemTyped.action === 'tools'
             const isHovered = hoveredSidebarIndex === index
             
             // 判断当前图标是否应该高亮
             let isActive = false
             if (isSearch) {
               isActive = searchOverlayOpen
-            } else if (item.href) {
-              if (item.href === '/') {
-                // 首页需要检查当前路径
-                isActive = typeof window !== 'undefined' && window.location.pathname === '/'
-              } else if (item.href.includes('view=')) {
-                // 其他页面检查 view 参数
-                const hrefView = item.href.split('view=')[1]?.split('&')[0] || null
-                // 匹配当前的 view，默认 view 是 'chat'
-                isActive = hrefView === view
+            } else if (isTools) {
+              isActive = aiToolsSidebarOpen
+            } else {
+              if (itemTyped.href) {
+                if (itemTyped.href === '/') {
+                  // 首页需要检查当前路径
+                  isActive = typeof window !== 'undefined' && window.location.pathname === '/'
+                } else if (itemTyped.href.includes('view=')) {
+                  // 其他页面检查 view 参数
+                  const hrefView = itemTyped.href.split('view=')[1]?.split('&')[0] || null
+                  // 匹配当前的 view，默认 view 是 'chat'
+                  isActive = hrefView === view
+                }
               }
             }
             
-            const shouldShowIcon = !(navExpanded && item.hideIconWhenExpanded)
+            const shouldShowIcon = !(navExpanded && itemTyped.hideIconWhenExpanded)
             const expandedLabelJustify = shouldShowIcon ? 'flex-start' : 'center'
             const defaultIconElement = <Icon style={{ width: '18px', height: '18px' }} />
-            const iconElement = !navExpanded && item.collapsedIcon ? item.collapsedIcon : defaultIconElement
+            const iconElement = !navExpanded && itemTyped.collapsedIcon ? itemTyped.collapsedIcon : defaultIconElement
 
-            if (item.nonInteractive) {
+            if (itemTyped.nonInteractive) {
               return (
                 <div
-                  key={item.label}
+                  key={itemTyped.label}
                   style={{
                     width: '100%',
                     height: '44px',
@@ -3005,13 +4128,14 @@ ${conversationContext || '(无)'}
 
             if (isSearch) {
               return (
-                <div key={item.label} style={{ position: 'relative' }}>
+                <div key={itemTyped.label} style={{ position: 'relative' }}>
                   <button
                     onMouseEnter={() => setHoveredSidebarIndex(index)}
                     onMouseLeave={() => setHoveredSidebarIndex(null)}
                   onClick={(event) => {
                     event.stopPropagation()
                     setNavExpanded(false)
+                    setAiToolsSidebarOpen(false)
                     setSearchOverlayOpen(true)
                     setActiveSearchId(flatSearchItems[0]?.id ?? null)
                   }}
@@ -3060,15 +4184,73 @@ ${conversationContext || '(无)'}
               )
             }
 
-            if (item.href) {
+            if (isTools) {
               return (
-                <div key={item.label} style={{ position: 'relative' }}>
-                  <Link
-                    href={item.href}
+                <div key={itemTyped.label} style={{ position: 'relative' }}>
+                  <button
                     onMouseEnter={() => setHoveredSidebarIndex(index)}
                     onMouseLeave={() => setHoveredSidebarIndex(null)}
                     onClick={(event) => {
                       event.stopPropagation()
+                      setSearchOverlayOpen(false)
+                      setAiToolsSidebarOpen((prev) => !prev)
+                    }}
+                    style={navExpanded ? expandedStyle : collapsedStyle}
+                  >
+                    {shouldShowIcon && iconElement}
+                    <span
+                      style={{
+                        opacity: navExpanded ? 1 : 0,
+                        maxWidth: navExpanded ? '140px' : '0',
+                        transform: navExpanded ? 'translateX(0)' : 'translateX(-8px)',
+                        transition: 'opacity 0.24s ease, max-width 0.24s ease, transform 0.24s ease',
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        fontSize: navExpanded ? '15px' : '14px',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                  {!navExpanded && isHovered && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 'calc(100% + 12px)',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        backgroundColor: '#f9fafb',
+                        color: '#111827',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        zIndex: 1000,
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        border: '1px solid #e5e7eb',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            const itemWithHref = item as { href?: string; label: string }
+            if (itemWithHref.href) {
+              return (
+                <div key={itemWithHref.label} style={{ position: 'relative' }}>
+                  <Link
+                    href={itemWithHref.href}
+                    onMouseEnter={() => setHoveredSidebarIndex(index)}
+                    onMouseLeave={() => setHoveredSidebarIndex(null)}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setAiToolsSidebarOpen(false)
                       if (!navExpanded) {
                         return
                       }
@@ -3135,34 +4317,51 @@ ${conversationContext || '(无)'}
               }}
             >
               <div style={{ position: 'relative' }}>
-                <button
-                  title={user.username || user.phone}
-                  onClick={() => setUserMenuOpen((prev) => !prev)}
-                  onContextMenu={(event) => event.preventDefault()}
-                  draggable={false}
+                <div
                   style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '18px',
-                    border: 'none',
-                    backgroundColor: '#D1431F',
-                    color: '#ffffff',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '12px',
+                    backgroundColor: userAvatarHovered ? '#F3F4F6' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    textTransform: 'uppercase',
-                    boxShadow: '0 4px 12px rgba(209, 67, 31, 0.25)',
-                    userSelect: 'none',
-                    WebkitUserSelect: 'none',
-                    MozUserSelect: 'none',
-                    msUserSelect: 'none',
+                    transition: 'background-color 0.2s ease',
                   }}
+                  onMouseEnter={() => setUserAvatarHovered(true)}
+                  onMouseLeave={() => setUserAvatarHovered(false)}
                 >
-                  {(user.username || user.phone || 'U').charAt(0)}
-                </button>
+                  <button
+                    title={user.username || user.phone}
+                    onClick={() => setUserMenuOpen((prev) => !prev)}
+                    onContextMenu={(event) => event.preventDefault()}
+                    draggable={false}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '18px',
+                      border: 'none',
+                      backgroundColor: '#D1431F',
+                      color: '#ffffff',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textTransform: 'uppercase',
+                      boxShadow: '0 4px 12px rgba(209, 67, 31, 0.25)',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      MozUserSelect: 'none',
+                      msUserSelect: 'none',
+                      transition: 'transform 0.2s ease',
+                      transform: userAvatarHovered ? 'scale(1.05)' : 'scale(1)',
+                    }}
+                  >
+                    {(user.username || user.phone || 'U').charAt(0)}
+                  </button>
+                </div>
                 {userMenuOpen && (
                   <div
                     style={{
@@ -3173,72 +4372,129 @@ ${conversationContext || '(无)'}
                       backgroundColor: '#ffffff',
                       borderRadius: '18px',
                       boxShadow: '0 20px 40px rgba(15, 23, 42, 0.18)',
-                      padding: '16px',
+                      padding: '8px',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '12px',
+                      gap: '4px',
                       zIndex: 20,
                       minWidth: '160px',
                       border: '1px solid #e5e7eb',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px', 
+                        cursor: 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'transparent',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#F3F4F6'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setUserMenuOpen(false)
+                        router.replace('/generate?view=settings&tab=overview')
+                      }}
+                    >
                       <Settings style={{ width: '18px', height: '18px', color: '#1f2937' }} />
-                      <Link
-                        href="/generate?view=settings"
-                        onClick={() => setUserMenuOpen(false)}
-                        style={{ fontSize: '13px', color: '#111827', textDecoration: 'none', lineHeight: 1 }}
-                      >
-                        设置
-                      </Link>
+                      <span style={{ fontSize: '13px', color: '#111827', lineHeight: 1 }}>设置</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px', 
+                        cursor: 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'transparent',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#F3F4F6'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setUserMenuOpen(false)
+                        router.replace('/generate?view=tasks')
+                      }}
+                    >
                       <Clock style={{ width: '18px', height: '18px', color: '#1f2937' }} />
-                      <Link
-                        href="/generate?view=projects"
-                        onClick={() => setUserMenuOpen(false)}
-                        style={{ fontSize: '13px', color: '#111827', textDecoration: 'none', lineHeight: 1 }}
-                      >
-                        任务
-                      </Link>
+                      <span style={{ fontSize: '13px', color: '#111827', lineHeight: 1 }}>任务</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Tag style={{ width: '18px', height: '18px', color: '#1f2937' }} />
-                      <Link
-                        href="/generate?view=gallery"
-                        onClick={() => setUserMenuOpen(false)}
-                        style={{ fontSize: '13px', color: '#111827', textDecoration: 'none', lineHeight: 1 }}
-                      >
-                        文件
-                      </Link>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px', 
+                        cursor: 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'transparent',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#F3F4F6'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setUserMenuOpen(false)
+                        setFeedbackModalOpen(true)
+                      }}
+                    >
+                      <MessageCircle style={{ width: '18px', height: '18px', color: '#1f2937' }} />
+                      <span style={{ fontSize: '13px', color: '#111827', lineHeight: 1 }}>反馈</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <HelpCircle style={{ width: '18px', height: '18px', color: '#1f2937' }} />
-                        <Link
-                          href="/generate?view=help"
-                          onClick={() => setUserMenuOpen(false)}
-                          style={{ fontSize: '13px', color: '#111827', textDecoration: 'none', lineHeight: 1 }}
-                        >
-                          帮助
-                        </Link>
-                      </div>
-                      <ChevronRight style={{ width: '14px', height: '14px', color: '#9ca3af' }} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px', 
+                        cursor: 'pointer',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'transparent',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#F3F4F6'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setUserMenuOpen(false)
+                        router.replace('/generate?view=subscription')
+                      }}
+                    >
                       <CreditCard style={{ width: '18px', height: '18px', color: '#1f2937' }} />
-                      <Link
-                        href="/generate?view=subscription"
-                        onClick={() => setUserMenuOpen(false)}
-                        style={{ fontSize: '13px', color: '#111827', textDecoration: 'none', lineHeight: 1 }}
-                      >
-                        升级套餐
-                      </Link>
+                      <span style={{ fontSize: '13px', color: '#111827', lineHeight: 1 }}>订阅</span>
                     </div>
                     <button
                       onClick={() => {
                         setUserMenuOpen(false)
                         void logout()
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#FEF2F2'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent'
                       }}
                       style={{
                         display: 'flex',
@@ -3248,9 +4504,12 @@ ${conversationContext || '(无)'}
                         color: '#ef4444',
                         background: 'none',
                         border: 'none',
-                        padding: 0,
+                        padding: '8px 12px',
+                        borderRadius: '8px',
                         cursor: 'pointer',
                         textAlign: 'left',
+                        width: '100%',
+                        transition: 'background-color 0.2s ease',
                       }}
                     >
                       <LogOut style={{ width: '18px', height: '18px' }} />
@@ -3814,6 +5073,14 @@ ${conversationContext || '(无)'}
       >
         {view === 'settings' ? (
           renderSettingsView()
+        ) : view === 'tasks' || view === 'projects' ? (
+          renderTasksView()
+        ) : view === 'files' || view === 'gallery' ? (
+          renderFilesView()
+        ) : view === 'feedback' ? (
+          renderHelpView()
+        ) : view === 'subscription' ? (
+          renderSubscriptionView()
         ) : isGeminiTest ? (
           renderGeminiTestView()
         ) : isChatView ? (
@@ -3862,35 +5129,44 @@ ${conversationContext || '(无)'}
                   placeholder="How can Grok help?"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      // 检查是否正在处理，避免重复提交
+                      if (!isGeneratingImage && !isSendingMessage && prompt.trim()) {
+                        void handleSendMessage()
+                      }
+                    }
+                  }}
+                  disabled={isGeneratingImage || isSendingMessage}
                   style={{
                     flex: 1,
                     border: 'none',
                     outline: 'none',
-                    fontSize: '16px',
+                    fontSize: '13px',
                     color: '#111827',
                   }}
                 />
-                <button
-                  title={isImageView || isVideoView ? '发送' : '语音输入'}
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '18px',
-                    border: 'none',
-                    backgroundColor: '#F3F4F6',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#1F2937',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {isImageView || isVideoView ? (
-                    <Send style={{ width: '18px', height: '18px' }} />
-                  ) : (
+                {!isImageView && !isVideoView && (
+                  <button
+                    title="语音输入"
+                    disabled={!prompt.trim() || isGeneratingImage || isSendingMessage}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '18px',
+                      border: 'none',
+                      backgroundColor: !prompt.trim() || isGeneratingImage || isSendingMessage ? '#e5e7eb' : '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: !prompt.trim() || isGeneratingImage || isSendingMessage ? 'not-allowed' : 'pointer',
+                      transition: 'background-color 0.2s',
+                    }}
+                  >
                     <Mic style={{ width: '18px', height: '18px' }} />
-                  )}
-                </button>
+                  </button>
+                )}
                 <div style={{ position: 'relative' }} ref={modelMenuRef}>
                   <button
                     onClick={() => setModelMenuOpen((prev) => !prev)}
@@ -4104,5 +5380,284 @@ ${conversationContext || '(无)'}
         )}
       </section>
     </main>
+
+    {/* AI 工具侧栏 */}
+    <AIToolsSidebar
+      isOpen={aiToolsSidebarOpen}
+      onClose={() => setAiToolsSidebarOpen(false)}
+      navExpanded={navExpanded}
+      onToolSelect={(tool) => {
+        setSelectedAITool(tool)
+        // TODO: 后续实现工具的具体使用逻辑
+        toast.success(`已选择工具：${tool.name}`)
+      }}
+    />
+
+    {/* 反馈问题模态框 */}
+    {feedbackModalOpen && (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setFeedbackModalOpen(false)
+            setFeedbackTypeDropdownOpen(false)
+            setFeedbackType('')
+            setFeedbackContent('')
+          }
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 标题栏 */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '20px 24px',
+              borderBottom: '1px solid #e5e7eb',
+            }}
+          >
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>
+              反馈问题
+            </h2>
+            <button
+              onClick={() => {
+                setFeedbackModalOpen(false)
+                setFeedbackTypeDropdownOpen(false)
+                setFeedbackType('')
+                setFeedbackContent('')
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#6b7280',
+              }}
+            >
+              <X style={{ width: '20px', height: '20px' }} />
+            </button>
+          </div>
+
+          {/* 内容区域 */}
+          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', overflowY: 'auto' }}>
+            {/* 反馈类型 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>
+                反馈类型
+              </label>
+              <div style={{ position: 'relative' }} ref={feedbackTypeDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setFeedbackTypeDropdownOpen(!feedbackTypeDropdownOpen)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    backgroundColor: '#ffffff',
+                    fontSize: '14px',
+                    color: feedbackType ? '#111827' : '#9ca3af',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <span>{feedbackType || '选择报告类型'}</span>
+                  <ChevronDown
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      color: '#6b7280',
+                      transform: feedbackTypeDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease',
+                    }}
+                  />
+                </button>
+                {feedbackTypeDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      zIndex: 10001,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {[
+                      '一般意见反馈',
+                      '问题/漏洞报告',
+                      '儿童安全问题',
+                      '回应反馈',
+                    ].map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setFeedbackType(type)
+                          setFeedbackTypeDropdownOpen(false)
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          fontSize: '14px',
+                          color: '#111827',
+                          textAlign: 'left',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#f3f4f6'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent'
+                        }}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 反馈内容 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>
+                你的反馈
+              </label>
+              <textarea
+                value={feedbackContent}
+                onChange={(e) => setFeedbackContent(e.target.value)}
+                placeholder="请描述你遇到的问题或对 Grok 的反馈意见。"
+                style={{
+                  width: '100%',
+                  minHeight: '120px',
+                  padding: '12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  color: '#111827',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  lineHeight: '1.5',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 底部按钮 */}
+          <div
+            style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #e5e7eb',
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackModalOpen(false)
+                setFeedbackTypeDropdownOpen(false)
+                setFeedbackType('')
+                setFeedbackContent('')
+              }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#f3f4f6',
+                color: '#111827',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#e5e7eb'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#f3f4f6'
+              }}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!feedbackType || !feedbackContent.trim()) {
+                  toast.error('请选择反馈类型并填写反馈内容')
+                  return
+                }
+                // TODO: 发送反馈到后端
+                toast.success('反馈已发送')
+                setFeedbackModalOpen(false)
+                setFeedbackTypeDropdownOpen(false)
+                setFeedbackType('')
+                setFeedbackContent('')
+              }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#1f2937',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#111827'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#1f2937'
+              }}
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

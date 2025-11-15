@@ -187,6 +187,23 @@
     background-color: #155cc0;
   }
 
+  /* Pricing card upgrade button - light gray background */
+  .btn-primary {
+    background-color: #f3f4f6;
+    color: #1f2937;
+    padding: 14px 30px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-primary:hover {
+    background-color: #e5e7eb;
+  }
+
   .btn.secondary {
     border: 1px solid #1A73E8;
     color: #1A73E8;
