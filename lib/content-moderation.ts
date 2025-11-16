@@ -33,24 +33,13 @@ export async function moderateImageAliyun(
   imageUrl: string,
   config: ModerationConfig
 ): Promise<ModerationResult> {
-  try {
-    // 需要安装 @alicloud/green
-    // 这里提供基础实现框架
-    console.warn('Aliyun content moderation not fully implemented. Install @alicloud/green for full support.')
-    
-    // 模拟实现
-    return {
-      passed: true,
-      riskLevel: 'pass',
-    }
-  } catch (error) {
-    console.error('Error moderating image with Aliyun:', error)
-    return {
-      passed: false,
-      riskLevel: 'review',
-      reason: '审核服务错误',
-    }
-  }
+  const { moderateImageAliyun: moderateImage } = await import('./moderation/aliyun')
+  return moderateImage(
+    imageUrl,
+    config.aliyunAccessKeyId!,
+    config.aliyunAccessKeySecret!,
+    config.aliyunRegion
+  )
 }
 
 /**
@@ -60,22 +49,13 @@ export async function moderateImageTencent(
   imageUrl: string,
   config: ModerationConfig
 ): Promise<ModerationResult> {
-  try {
-    // 需要安装 tencentcloud-sdk-nodejs
-    console.warn('Tencent content moderation not fully implemented. Install tencentcloud-sdk-nodejs for full support.')
-    
-    return {
-      passed: true,
-      riskLevel: 'pass',
-    }
-  } catch (error) {
-    console.error('Error moderating image with Tencent:', error)
-    return {
-      passed: false,
-      riskLevel: 'review',
-      reason: '审核服务错误',
-    }
-  }
+  const { moderateImageTencent: moderateImage } = await import('./moderation/tencent')
+  return moderateImage(
+    imageUrl,
+    config.tencentSecretId!,
+    config.tencentSecretKey!,
+    config.tencentRegion
+  )
 }
 
 /**
@@ -153,28 +133,33 @@ export async function moderateText(
 }
 
 /**
- * 视频内容审核（需要先提取关键帧）
+ * 视频内容审核（抽帧 + OCR + ASR）
  */
 export async function moderateVideo(
   videoUrl: string,
   config: ModerationConfig
 ): Promise<ModerationResult> {
-  // 视频审核通常需要提取关键帧，然后对每一帧进行图像审核
-  // 这里提供基础框架
-  console.warn('Video moderation not fully implemented. Extract keyframes first.')
-  
-  return {
-    passed: true,
-    riskLevel: 'pass',
-  }
+  const { moderateVideo: moderateVideoImpl } = await import('./moderation/video')
+  return moderateVideoImpl(videoUrl, config)
+}
+
+/**
+ * 音频内容审核（Whisper → 文本）
+ */
+export async function moderateAudio(
+  audioUrl: string,
+  config: ModerationConfig
+): Promise<ModerationResult & { transcribedText?: string }> {
+  const { moderateAudio: moderateAudioImpl } = await import('./moderation/audio')
+  return moderateAudioImpl(audioUrl, config)
 }
 
 /**
  * 统一的内容审核接口
  */
 export async function moderateContent(
-  type: 'image' | 'video' | 'text',
-  content: string, // URL for image/video, text for text
+  type: 'image' | 'video' | 'text' | 'audio',
+  content: string, // URL for image/video/audio, text for text
   config: ModerationConfig
 ): Promise<ModerationResult> {
   const startTime = Date.now()
@@ -206,6 +191,9 @@ export async function moderateContent(
           break
         case 'video':
           result = await moderateVideo(content, config)
+          break
+        case 'audio':
+          result = await moderateAudio(content, config)
           break
         case 'text':
           result = await moderateText(content, config)

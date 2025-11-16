@@ -185,7 +185,7 @@ npx prisma studio
    npm run dev
    ```
 
-2. 访问 `http://localhost:3000/auth`
+2. 访问 `http://localhost:3000/`
 3. 输入手机号，点击「发送验证码」
 4. 在控制台查看验证码（开发环境）
 5. 输入验证码完成注册/登录

@@ -88,7 +88,7 @@ npm run dev
 
 ### 1. 测试用户注册/登录
 
-1. 访问 `http://localhost:3000/auth`
+1. 访问 `http://localhost:3000/`
 2. 输入手机号（格式：1xxxxxxxxxx）
 3. 点击"发送验证码"
 4. **开发环境**：在控制台查看验证码

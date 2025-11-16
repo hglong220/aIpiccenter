@@ -10,6 +10,9 @@
  */
 
 import type { ImageGenerationRequest, VideoGenerationRequest } from '@/types'
+import { aiQueue, videoQueue } from './queues'
+import { prisma } from './prisma'
+import { ModelRecommender, getAPIKeyManager, TaskChainExecutor } from './ai-scheduler'
 
 // 任务类型
 export type TaskType = 'text' | 'image' | 'video' | 'audio' | 'document' | 'code' | 'composite'
@@ -68,56 +71,8 @@ export interface ModelConfig {
   fallback?: ModelType[] // 降级模型列表
 }
 
-// 任务队列（内存实现，生产环境建议使用Redis/BullMQ）
-class TaskQueue {
-  private queue: AITask[] = []
-  private running: Set<string> = new Set()
-  private maxConcurrent: number = 5
-
-  async enqueue(task: AITask): Promise<void> {
-    this.queue.push(task)
-    this.processQueue()
-  }
-
-  async dequeue(): Promise<AITask | null> {
-    if (this.running.size >= this.maxConcurrent) {
-      return null
-    }
-
-    // 按优先级排序
-    this.queue.sort((a, b) => {
-      const priorityOrder = { urgent: 4, high: 3, normal: 2, low: 1 }
-      return priorityOrder[b.priority] - priorityOrder[a.priority]
-    })
-
-    const task = this.queue.shift()
-    if (task) {
-      this.running.add(task.id)
-    }
-    return task || null
-  }
-
-  async complete(taskId: string): Promise<void> {
-    this.running.delete(taskId)
-    this.processQueue()
-  }
-
-  private async processQueue(): Promise<void> {
-    while (this.running.size < this.maxConcurrent) {
-      const task = await this.dequeue()
-      if (!task) break
-      // 任务处理在外部进行
-    }
-  }
-
-  getQueueLength(): number {
-    return this.queue.length
-  }
-
-  getRunningCount(): number {
-    return this.running.size
-  }
-}
+// 任务队列已迁移到 BullMQ (lib/queues.ts)
+// 保留此接口以保持向后兼容
 
 // 模型配置管理
 class ModelManager {
@@ -375,19 +330,16 @@ class TaskTypeDetector {
 
 // AI路由器主类
 export class AIRouter {
-  private taskQueue: TaskQueue
   private modelManager: ModelManager
   private taskDetector: TaskTypeDetector
-  private tasks: Map<string, AITask> = new Map()
 
   constructor() {
-    this.taskQueue = new TaskQueue()
     this.modelManager = new ModelManager()
     this.taskDetector = new TaskTypeDetector()
   }
 
   /**
-   * 路由AI任务
+   * 路由AI任务（使用 BullMQ + 智能调度）
    */
   async routeTask(
     userId: string,
@@ -397,47 +349,109 @@ export class AIRouter {
     // 1. 识别任务类型
     const taskType = this.taskDetector.detectTaskType(request)
 
-    // 2. 选择最佳模型
-    const model = this.selectBestModel(taskType, request)
+    // 2. 选择最佳模型（使用智能推荐）
+    const model = this.selectBestModel(taskType, request, priority)
 
     if (!model) {
       throw new Error(`No available model for task type: ${taskType}`)
     }
 
-    // 3. 创建任务
-    const task: AITask = {
-      id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      userId,
-      type: taskType,
-      priority,
-      status: 'pending',
-      model: model.type,
-      fallbackModels: model.fallback,
-      request,
-      retryCount: 0,
-      maxRetries: 3,
-      createdAt: new Date(),
-    }
+    // 3. 获取降级模型列表
+    const availableModels = this.modelManager.getAvailableModels(taskType)
+    const fallbackModels = ModelRecommender.getFallbackModels(
+      model.type,
+      taskType,
+      availableModels.map(m => ({ ...m, cost: this.getModelCost(m.type), performance: this.getModelPerformance(m.type) })) as any
+    )
 
-    // 4. 加入队列
-    this.tasks.set(task.id, task)
-    await this.taskQueue.enqueue(task)
-
-    // 5. 异步处理任务
-    this.processTask(task).catch(error => {
-      console.error(`[AI Router] Task ${task.id} failed:`, error)
-      task.status = 'failed'
-      task.error = error.message
-      task.completedAt = new Date()
+    // 4. 创建数据库记录
+    const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    const dbTask = await prisma.aiTask.create({
+      data: {
+        id: taskId,
+        userId,
+        taskType,
+        priority,
+        status: 'pending',
+        model: model.type,
+        fallbackModels: fallbackModels.length > 0 ? JSON.stringify(fallbackModels) : null,
+        requestData: JSON.stringify(request),
+        maxRetries: 3,
+      },
     })
 
-    return task
+    // 5. 选择队列（根据任务类型）
+    const queue = taskType === 'video' ? videoQueue : aiQueue
+
+    // 6. 计算优先级（BullMQ 使用数字，越大优先级越高）
+    const priorityValue = {
+      urgent: 10,
+      high: 7,
+      normal: 5,
+      low: 1,
+    }[priority] || 5
+
+    // 7. 添加到队列
+    await queue.add(
+      taskId,
+      {
+        taskId,
+        userId,
+        taskType,
+        request,
+        model: model.type,
+        fallbackModels,
+      },
+      {
+        priority: priorityValue,
+        jobId: taskId, // 使用 taskId 作为 jobId
+      }
+    )
+
+    // 8. 返回任务对象
+    return {
+      id: dbTask.id,
+      userId: dbTask.userId,
+      type: dbTask.taskType as TaskType,
+      priority: dbTask.priority as TaskPriority,
+      status: dbTask.status as TaskStatus,
+      model: dbTask.model as ModelType | undefined,
+      fallbackModels: dbTask.fallbackModels
+        ? (JSON.parse(dbTask.fallbackModels) as ModelType[])
+        : undefined,
+      request,
+      retryCount: dbTask.retryCount,
+      maxRetries: dbTask.maxRetries,
+      createdAt: dbTask.createdAt,
+    }
   }
 
   /**
-   * 选择最佳模型
+   * 执行任务链（文本 → 图 → 视频等）
    */
-  private selectBestModel(taskType: TaskType, request: any): ModelConfig | null {
+  async executeTaskChain(
+    userId: string,
+    chain: {
+      steps: Array<{
+        taskType: TaskType
+        model?: ModelType
+        input: any
+        dependsOn?: number
+      }>
+    }
+  ): Promise<any[]> {
+    const taskChain = {
+      id: `chain_${Date.now()}`,
+      steps: chain.steps,
+    }
+    return TaskChainExecutor.executeChain(taskChain, userId, this)
+  }
+
+  /**
+   * 选择最佳模型（使用智能推荐）
+   */
+  private selectBestModel(taskType: TaskType, request: any, priority: TaskPriority = 'normal'): ModelConfig | null {
     const availableModels = this.modelManager.getAvailableModels(taskType)
     
     if (availableModels.length === 0) {
@@ -452,75 +466,51 @@ export class AIRouter {
       }
     }
 
-    // 根据任务类型选择默认模型
-    switch (taskType) {
-      case 'text':
-        return availableModels.find(m => m.type === 'gemini-pro') || 
-               availableModels.find(m => m.type === 'gpt-4') ||
-               availableModels[0]
-      case 'image':
-        return availableModels.find(m => m.type === 'gemini-pro') ||
-               availableModels.find(m => m.type === 'stable-diffusion') ||
-               availableModels[0]
-      case 'video':
-        return availableModels.find(m => m.type === 'runway') ||
-               availableModels.find(m => m.type === 'pika') ||
-               availableModels[0]
-      case 'audio':
-        return availableModels.find(m => m.type === 'whisper') || availableModels[0]
-      case 'document':
-        return availableModels.find(m => m.type === 'gemini-pro') ||
-               availableModels.find(m => m.type === 'ocr') ||
-               availableModels[0]
-      case 'code':
-        return availableModels.find(m => m.type === 'gpt-4') ||
-               availableModels.find(m => m.type === 'gemini-pro') ||
-               availableModels[0]
-      default:
-        return availableModels[0]
+    // 使用智能推荐（考虑成本、性能、优先级）
+    const budget = request.budget || 'normal' // low, normal, high
+    const enhancedModels = availableModels.map(m => ({
+      ...m,
+      cost: this.getModelCost(m.type),
+      performance: this.getModelPerformance(m.type),
+    }))
+
+    const recommended = ModelRecommender.recommendModel(
+      taskType,
+      priority,
+      budget,
+      enhancedModels as any
+    )
+
+    return recommended || availableModels[0]
+  }
+
+  /**
+   * 获取模型成本（使用 ai-scheduler.ts 中的配置）
+   */
+  private getModelCost(modelType: ModelType): any {
+    const { MODEL_COSTS } = require('./ai-scheduler')
+    return MODEL_COSTS[modelType] || {
+      inputTokens: 0.001,
+      outputTokens: 0.002,
+      image: 0.01,
+      video: 0.05,
     }
   }
 
   /**
-   * 处理任务
+   * 获取模型性能（使用 ai-scheduler.ts 中的配置）
    */
-  private async processTask(task: AITask): Promise<void> {
-    task.status = 'running'
-    task.startedAt = new Date()
-
-    try {
-      // 获取API密钥
-      const apiKey = this.modelManager.getNextApiKey(task.model!)
-      if (!apiKey) {
-        throw new Error(`No API key available for model: ${task.model}`)
-      }
-
-      // 执行任务
-      const result = await this.executeTask(task, apiKey)
-      
-      task.status = 'success'
-      task.result = result
-      task.completedAt = new Date()
-    } catch (error: any) {
-      // 尝试降级
-      if (task.retryCount < task.maxRetries && task.fallbackModels && task.fallbackModels.length > 0) {
-        task.retryCount++
-        const fallbackModel = task.fallbackModels[0]
-        task.model = fallbackModel
-        task.fallbackModels = task.fallbackModels.slice(1)
-        task.status = 'retry'
-        
-        console.log(`[AI Router] Task ${task.id} failed, retrying with ${fallbackModel}`)
-        await this.processTask(task)
-      } else {
-        task.status = 'failed'
-        task.error = error.message
-        task.completedAt = new Date()
-      }
-    } finally {
-      await this.taskQueue.complete(task.id)
+  private getModelPerformance(modelType: ModelType): any {
+    const { MODEL_PERFORMANCE } = require('./ai-scheduler')
+    return MODEL_PERFORMANCE[modelType] || {
+      speed: 7,
+      quality: 8,
+      reliability: 8,
     }
   }
+
+  // 任务处理已迁移到 queue-workers.ts
+  // 此方法保留用于直接调用（不通过队列）
 
   /**
    * 执行任务（调用实际的AI服务）
@@ -558,10 +548,18 @@ export class AIRouter {
     const genAI = new GoogleGenerativeAI(apiKey)
     
     if (task.type === 'image') {
-      // 图像生成
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' })
-      // 实现图像生成逻辑
-      throw new Error('Gemini image generation not yet implemented')
+      // 图像生成 - 使用lib/gemini.ts中的generateImage函数
+      const { generateImage } = await import('./gemini')
+      const result = await generateImage({
+        prompt: task.request.prompt || '',
+        negativePrompt: task.request.negativePrompt,
+        width: task.request.width || 1024,
+        height: task.request.height || 1024,
+      })
+      return {
+        imageUrl: result.imageUrl,
+        prompt: result.prompt,
+      }
     } else {
       // 文本生成
       const model = genAI.getGenerativeModel({ model: task.model === 'gemini-flash' ? 'gemini-1.5-flash' : 'gemini-1.5-pro' })
@@ -574,32 +572,228 @@ export class AIRouter {
    * 执行GPT任务
    */
   private async executeGPTTask(task: AITask, apiKey: string): Promise<any> {
-    // TODO: 实现GPT调用
-    throw new Error('GPT task execution not yet implemented')
+    try {
+      // 动态导入OpenAI SDK
+      const { OpenAI } = await import('openai').catch(() => {
+        throw new Error('openai package not installed. Run: npm install openai')
+      })
+
+      const openai = new OpenAI({ apiKey })
+      const model = task.model === 'gpt-4' ? 'gpt-4' : 'gpt-3.5-turbo'
+
+      // 构建消息
+      const messages: any[] = []
+      if (task.request.systemPrompt) {
+        messages.push({ role: 'system', content: task.request.systemPrompt })
+      }
+      messages.push({ role: 'user', content: task.request.prompt || task.request.text || '' })
+
+      // 调用OpenAI API
+      const completion = await openai.chat.completions.create({
+        model,
+        messages,
+        temperature: task.request.temperature || 0.7,
+        max_tokens: task.request.maxTokens || 2000,
+      })
+
+      return completion.choices[0]?.message?.content || ''
+    } catch (error: any) {
+      console.error('[GPT Task] Error:', error)
+      throw new Error(`GPT任务执行失败: ${error.message}`)
+    }
   }
 
   /**
    * 执行图像生成任务
    */
   private async executeImageGenerationTask(task: AITask, apiKey: string): Promise<any> {
-    // TODO: 实现图像生成
-    throw new Error('Image generation task execution not yet implemented')
+    try {
+      const { prompt, negativePrompt, width, height, model: imageModel } = task.request
+
+      // 使用Gemini图像生成
+      if (imageModel === 'gemini' || !imageModel) {
+        const { generateImage } = await import('./gemini')
+        const result = await generateImage({
+          prompt,
+          negativePrompt,
+          width: width || 1024,
+          height: height || 1024,
+        })
+        return {
+          imageUrl: result.imageUrl,
+          prompt: result.prompt,
+        }
+      }
+
+      // 使用Stable Diffusion或Flux (需要配置相应的API)
+      if (imageModel === 'stable-diffusion' || imageModel === 'flux') {
+        // 这里可以集成Stability AI或其他图像生成API
+        const apiUrl = imageModel === 'flux' 
+          ? process.env.FLUX_API_URL || 'https://api.flux.ai/v1/generate'
+          : process.env.STABLE_DIFFUSION_API_URL || 'https://api.stability.ai/v1/generation'
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            negative_prompt: negativePrompt,
+            width: width || 1024,
+            height: height || 1024,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`图像生成API失败: ${response.status}`)
+        }
+
+        const data = await response.json()
+        return {
+          imageUrl: data.imageUrl || data.images?.[0]?.url,
+          prompt,
+        }
+      }
+
+      throw new Error(`不支持的图像生成模型: ${imageModel}`)
+    } catch (error: any) {
+      console.error('[Image Generation Task] Error:', error)
+      throw new Error(`图像生成任务执行失败: ${error.message}`)
+    }
   }
 
   /**
    * 执行视频生成任务
    */
   private async executeVideoGenerationTask(task: AITask, apiKey: string): Promise<any> {
-    // TODO: 实现视频生成
-    throw new Error('Video generation task execution not yet implemented')
+    const { prompt, imageUrl, duration, aspectRatio, model } = task.request
+
+    switch (model) {
+      case 'runway':
+        return await this.executeRunwayTask(apiKey, {
+          prompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+        })
+      case 'pika':
+        return await this.executePikaTask(apiKey, {
+          prompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+        })
+      case 'kling':
+        return await this.executeKlingTask(apiKey, {
+          prompt,
+          imageUrl,
+          duration,
+          aspectRatio,
+        })
+      default:
+        throw new Error(`Unsupported video model: ${model}`)
+    }
+  }
+
+  /**
+   * 执行 Runway 任务
+   */
+  private async executeRunwayTask(apiKey: string, request: any): Promise<any> {
+    const { createRunwayGeneration } = await import('./video-generators/runway')
+    const result = await createRunwayGeneration(
+      { apiKey },
+      {
+        prompt: request.prompt,
+        imageUrl: request.imageUrl,
+        duration: request.duration || 5,
+        aspectRatio: request.aspectRatio || '16:9',
+      }
+    )
+    return result
+  }
+
+  /**
+   * 执行 Pika 任务
+   */
+  private async executePikaTask(apiKey: string, request: any): Promise<any> {
+    const { createPikaGeneration } = await import('./video-generators/pika')
+    const result = await createPikaGeneration(
+      { apiKey },
+      {
+        prompt: request.prompt,
+        imageUrl: request.imageUrl,
+        duration: request.duration || 4,
+        aspectRatio: request.aspectRatio || '16:9',
+      }
+    )
+    return result
+  }
+
+  /**
+   * 执行 Kling 任务
+   */
+  private async executeKlingTask(apiKey: string, request: any): Promise<any> {
+    const { createKlingGeneration } = await import('./video-generators/kling')
+    const result = await createKlingGeneration(
+      { apiKey },
+      {
+        prompt: request.prompt,
+        imageUrl: request.imageUrl,
+        duration: request.duration || 5,
+        aspectRatio: request.aspectRatio || '16:9',
+      }
+    )
+    return result
   }
 
   /**
    * 执行Whisper任务
    */
   private async executeWhisperTask(task: AITask, apiKey: string): Promise<any> {
-    // TODO: 实现Whisper音频转文本
-    throw new Error('Whisper task execution not yet implemented')
+    try {
+      const { audioUrl, audioPath, language } = task.request
+
+      // 动态导入OpenAI SDK
+      const { OpenAI } = await import('openai').catch(() => {
+        throw new Error('openai package not installed. Run: npm install openai')
+      })
+
+      const openai = new OpenAI({ apiKey })
+
+      // 读取音频文件
+      let audioBuffer: Buffer
+      if (audioPath) {
+        const fs = await import('fs/promises')
+        audioBuffer = await fs.readFile(audioPath)
+      } else if (audioUrl) {
+        const response = await fetch(audioUrl)
+        audioBuffer = Buffer.from(await response.arrayBuffer())
+      } else {
+        throw new Error('缺少音频文件路径或URL')
+      }
+
+      // 创建File对象
+      const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' })
+
+      // 调用Whisper API
+      const transcription = await openai.audio.transcriptions.create({
+        file: audioFile as any,
+        model: 'whisper-1',
+        language: language || undefined,
+        response_format: 'verbose_json',
+      })
+
+      return {
+        text: transcription.text,
+        language: transcription.language,
+        segments: (transcription as any).segments || [],
+      }
+    } catch (error: any) {
+      console.error('[Whisper Task] Error:', error)
+      throw new Error(`Whisper任务执行失败: ${error.message}`)
+    }
   }
 
   /**
@@ -610,12 +804,22 @@ export class AIRouter {
   }
 
   /**
-   * 获取队列状态
+   * 获取队列状态（从 BullMQ）
    */
-  getQueueStatus(): { queueLength: number; runningCount: number } {
+  async getQueueStatus(): Promise<{ queueLength: number; runningCount: number }> {
+    const [aiWaiting, aiActive] = await Promise.all([
+      aiQueue.getWaitingCount(),
+      aiQueue.getActiveCount(),
+    ])
+
+    const [videoWaiting, videoActive] = await Promise.all([
+      videoQueue.getWaitingCount(),
+      videoQueue.getActiveCount(),
+    ])
+
     return {
-      queueLength: this.taskQueue.getQueueLength(),
-      runningCount: this.taskQueue.getRunningCount(),
+      queueLength: aiWaiting + videoWaiting,
+      runningCount: aiActive + videoActive,
     }
   }
 }

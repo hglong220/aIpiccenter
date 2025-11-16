@@ -4,26 +4,39 @@
  */
 
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { checkDatabaseHealth } from '@/lib/prisma'
+import { checkRedisHealth } from '@/lib/redis'
 
 export async function GET() {
   const checks: Record<string, { status: 'ok' | 'error'; message?: string }> = {}
   let overallStatus = 'ok'
 
   // 数据库连接检查
-  try {
-    await prisma.$queryRaw`SELECT 1`
+  const dbHealthy = await checkDatabaseHealth()
+  if (dbHealthy) {
     checks.database = { status: 'ok' }
-  } catch (error) {
+  } else {
     checks.database = {
       status: 'error',
-      message: error instanceof Error ? error.message : 'Database connection failed',
+      message: 'Database connection failed',
+    }
+    overallStatus = 'error'
+  }
+
+  // Redis 连接检查
+  const redisHealthy = await checkRedisHealth()
+  if (redisHealthy) {
+    checks.redis = { status: 'ok' }
+  } else {
+    checks.redis = {
+      status: 'error',
+      message: 'Redis connection failed',
     }
     overallStatus = 'error'
   }
 
   // 环境变量检查
-  const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL']
+  const requiredEnvVars = ['JWT_SECRET', 'DATABASE_URL', 'REDIS_URL']
   const missingEnvVars: string[] = []
   
   requiredEnvVars.forEach(envVar => {

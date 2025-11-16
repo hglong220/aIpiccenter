@@ -918,7 +918,7 @@ export default function GenerateLandingPage() {
         >
           <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '16px' }}>请先登录以查看任务。</p>
           <Link
-            href="/auth"
+            href="/"
             style={{
               padding: '10px 22px',
               borderRadius: '999px',
@@ -1040,7 +1040,7 @@ export default function GenerateLandingPage() {
         >
           <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '16px' }}>请先登录以查看文件。</p>
           <Link
-            href="/auth"
+            href="/"
             style={{
               padding: '10px 22px',
               borderRadius: '999px',
@@ -1301,7 +1301,7 @@ export default function GenerateLandingPage() {
           <h2 style={{ fontSize: '24px', fontWeight: 600, color: '#111827', marginBottom: '12px' }}>订阅管理</h2>
           <p style={{ fontSize: '15px', color: '#6b7280', marginBottom: '24px' }}>请先登录以查看和管理您的订阅套餐。</p>
           <Link
-            href="/auth"
+            href="/"
             style={{
               display: 'inline-block',
               padding: '12px 24px',
@@ -1600,7 +1600,7 @@ export default function GenerateLandingPage() {
         >
           <p style={{ fontSize: '16px', color: '#6b7280', marginBottom: '16px' }}>请先登录以查看账户信息。</p>
           <Link
-            href="/auth"
+            href="/"
             style={{
               padding: '10px 22px',
               borderRadius: '999px',

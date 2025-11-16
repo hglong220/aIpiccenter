@@ -10,6 +10,7 @@ import { getTokenFromCookies, verifyToken } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAIRouter } from '@/lib/ai-router'
 import type { ApiResponse } from '@/types'
+import * as path from 'path'
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,15 +62,85 @@ export async function GET(request: NextRequest) {
       }, { status: 403 })
     }
 
-    // 从内存路由器获取最新状态
-    const router = getAIRouter()
-    const memoryTask = router.getTask(taskId)
+    // 如果任务正在运行，查询外部 API 状态
+    let status = dbTask.status
+    let progress = dbTask.progress
+    let result = dbTask.resultData ? JSON.parse(dbTask.resultData) : null
+    let error = dbTask.error
 
-    // 合并数据库和内存状态
-    const status = memoryTask?.status || dbTask.status
-    const progress = memoryTask ? calculateProgress(memoryTask) : dbTask.progress
-    const result = memoryTask?.result || (dbTask.resultData ? JSON.parse(dbTask.resultData) : null)
-    const error = memoryTask?.error || dbTask.error
+    if (status === 'running' && dbTask.model) {
+      try {
+        // 从结果中获取 generationId
+        const resultData = dbTask.resultData ? JSON.parse(dbTask.resultData) : null
+        const generationId = resultData?.id
+
+        if (generationId) {
+          // 查询外部 API 状态
+          const apiStatus = await queryVideoGenerationStatus(dbTask.model, generationId)
+          
+          if (apiStatus.status === 'completed' || apiStatus.status === 'success') {
+            status = 'success'
+            progress = 100
+            
+            // 下载并存储视频
+            let storedVideoUrl = apiStatus.videoUrl
+            let storedThumbnailUrl = apiStatus.thumbnailUrl
+            
+            if (apiStatus.videoUrl && process.env.VIDEO_STORAGE_ENABLED === 'true') {
+              try {
+                const { saveVideoToStorage } = await import('@/lib/video-processor')
+                const storagePath = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage')
+                const storageResult = await saveVideoToStorage(
+                  apiStatus.videoUrl,
+                  decoded.id,
+                  storagePath
+                )
+                
+                // 更新文件记录（如果存在）
+                storedVideoUrl = `/storage/${decoded.id}/videos/${path.basename(storageResult.localPath)}`
+                storedThumbnailUrl = `/storage/${decoded.id}/videos/${path.basename(storageResult.thumbnailPath)}`
+              } catch (storageError) {
+                console.error('[Video Status] Video storage failed:', storageError)
+                // 继续使用原始URL
+              }
+            }
+            
+            result = {
+              videoUrl: storedVideoUrl,
+              thumbnailUrl: storedThumbnailUrl,
+            }
+            
+            // 更新数据库
+            await prisma.aiTask.update({
+              where: { id: taskId },
+              data: {
+                status: 'success',
+                resultData: JSON.stringify(result),
+                progress: 100,
+                completedAt: new Date(),
+              },
+            })
+          } else if (apiStatus.status === 'failed' || apiStatus.status === 'error') {
+            status = 'failed'
+            error = apiStatus.error || '视频生成失败'
+            
+            await prisma.aiTask.update({
+              where: { id: taskId },
+              data: {
+                status: 'failed',
+                error,
+                completedAt: new Date(),
+              },
+            })
+          } else {
+            progress = apiStatus.progress || dbTask.progress
+          }
+        }
+      } catch (err: any) {
+        console.error('[Video Status] Error querying external API:', err)
+        // 继续使用数据库状态
+      }
+    }
 
     // 如果任务完成，更新数据库
     if (status === 'success' && dbTask.status !== 'success') {
@@ -151,16 +222,44 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function calculateProgress(task: any): number {
-  if (task.status === 'success') return 100
-  if (task.status === 'failed') return 0
-  if (task.status === 'pending') return 0
-  
-  const elapsed = task.startedAt 
-    ? (Date.now() - task.startedAt.getTime()) / 1000 
-    : 0
-  
-  const estimated = 120 // 视频生成预估2分钟
-  return Math.min(95, Math.floor((elapsed / estimated) * 100))
+/**
+ * 查询视频生成状态（从外部 API）
+ */
+async function queryVideoGenerationStatus(
+  model: string,
+  generationId: string
+): Promise<{ status: string; progress?: number; videoUrl?: string; thumbnailUrl?: string; error?: string }> {
+  // 获取 API Key
+  const apiKey = getApiKeyForModel(model)
+  if (!apiKey) {
+    throw new Error(`No API key configured for model ${model}`)
+  }
+
+  switch (model) {
+    case 'runway':
+      const { getRunwayGenerationStatus } = await import('@/lib/video-generators/runway')
+      return await getRunwayGenerationStatus({ apiKey }, generationId)
+    case 'pika':
+      const { getPikaGenerationStatus } = await import('@/lib/video-generators/pika')
+      return await getPikaGenerationStatus({ apiKey }, generationId)
+    case 'kling':
+      const { getKlingGenerationStatus } = await import('@/lib/video-generators/kling')
+      return await getKlingGenerationStatus({ apiKey }, generationId)
+    default:
+      throw new Error(`Unsupported model: ${model}`)
+  }
+}
+
+function getApiKeyForModel(model: string): string | null {
+  switch (model) {
+    case 'runway':
+      return process.env.RUNWAY_API_KEY?.split(',')[0] || null
+    case 'pika':
+      return process.env.PIKA_API_KEY?.split(',')[0] || null
+    case 'kling':
+      return process.env.KLING_API_KEY?.split(',')[0] || null
+    default:
+      return null
+  }
 }
 

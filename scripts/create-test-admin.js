@@ -88,7 +88,7 @@ async function createTestAdmin() {
     console.log('\n⚠️  重要提示：');
     console.log('   1. 登录时需要使用验证码');
     console.log('   2. 验证码会在控制台输出（开发环境）');
-    console.log('   3. 访问 http://localhost:3000/auth 进行登录');
+    console.log('   3. 访问 http://localhost:3000/ 进行登录');
     console.log('   4. 输入手机号，点击"发送验证码"');
     console.log('   5. 在终端查看验证码并输入\n');
 

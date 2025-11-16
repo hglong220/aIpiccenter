@@ -25,27 +25,47 @@ export async function POST(request: NextRequest) {
 
     if (!phone) {
       return NextResponse.json<ApiResponse<AuthResponse>>(
-        { success: false, error: '手机号是必需的' },
+        { success: false, error: '用户名或手机号是必需的' },
         { status: 400 }
       )
     }
 
-    if (!PHONE_REGEX.test(phone)) {
+    // 判断输入的是手机号还是用户名
+    const isPhone = PHONE_REGEX.test(phone)
+    
+    if (!isPhone && phone.length < 3) {
       return NextResponse.json<ApiResponse<AuthResponse>>(
-        { success: false, error: '手机号格式不正确' },
+        { success: false, error: '请输入有效的手机号或用户名' },
         { status: 400 }
       )
     }
 
-    const user = await prisma.user.findUnique({
-      where: { phone },
-    })
-
-    if (!user) {
-      return NextResponse.json<ApiResponse<AuthResponse>>(
-        { success: false, error: '该手机号未注册' },
-        { status: 404 }
-      )
+    // 根据输入类型查找用户
+    let user
+    if (isPhone) {
+      // 手机号登录
+      user = await prisma.user.findUnique({
+        where: { phone },
+      })
+      
+      if (!user) {
+        return NextResponse.json<ApiResponse<AuthResponse>>(
+          { success: false, error: '该手机号未注册' },
+          { status: 404 }
+        )
+      }
+    } else {
+      // 用户名登录
+      user = await prisma.user.findUnique({
+        where: { username: phone }, // 这里 phone 变量实际是用户名
+      })
+      
+      if (!user) {
+        return NextResponse.json<ApiResponse<AuthResponse>>(
+          { success: false, error: '该用户名不存在' },
+          { status: 404 }
+        )
+      }
     }
 
     const usePassword = loginType === 'password'
@@ -61,11 +81,19 @@ export async function POST(request: NextRequest) {
       const isPasswordValid = await bcrypt.compare(password, user.password)
       if (!isPasswordValid) {
         return NextResponse.json<ApiResponse<AuthResponse>>(
-          { success: false, error: '手机号或密码错误' },
+          { success: false, error: '用户名/手机号或密码错误' },
           { status: 401 }
         )
       }
     } else {
+      // 验证码登录只支持手机号
+      if (!isPhone) {
+        return NextResponse.json<ApiResponse<AuthResponse>>(
+          { success: false, error: '验证码登录需要使用手机号' },
+          { status: 400 }
+        )
+      }
+      
       if (!code) {
         return NextResponse.json<ApiResponse<AuthResponse>>(
           { success: false, error: '验证码是必需的' },
@@ -75,7 +103,7 @@ export async function POST(request: NextRequest) {
 
       const verificationCode = await prisma.verificationCode.findFirst({
         where: {
-          phone,
+          phone: user.phone, // 使用用户的手机号
           code,
           type: 'login',
           used: false,

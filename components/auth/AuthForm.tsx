@@ -42,8 +42,11 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
     if (mode !== 'login') {
       setLoginMethod('code')
     } else {
-      // 切换到登录模式时，默认使用密码登录
-      setLoginMethod('password')
+      // 切换到登录模式时，如果当前不是密码登录，则默认使用密码登录
+      // 但如果用户已经选择了验证码登录，则保持验证码登录
+      if (loginMethod !== 'code') {
+        setLoginMethod('password')
+      }
     }
   }, [mode])
 
@@ -65,12 +68,13 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
   }
 
   const handleLogin = async () => {
-    if (!PHONE_REGEX.test(phone)) {
-      toast.error('请输入有效的手机号')
-      return
-    }
-
     if (loginMethod === 'code') {
+      // 验证码登录必须使用手机号
+      if (!PHONE_REGEX.test(phone)) {
+        toast.error('请输入有效的手机号')
+        return
+      }
+
       if (!code) {
         toast.error('请输入验证码')
         return
@@ -87,13 +91,24 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
         }
       }
     } else {
+      // 密码登录可以使用用户名或手机号
+      if (!phone.trim()) {
+        toast.error('请输入用户名或手机号')
+        return
+      }
+
+      if (phone.trim().length < 3) {
+        toast.error('用户名或手机号格式不正确')
+        return
+      }
+
       if (!password) {
         toast.error('请输入密码')
         return
       }
 
       setLoading(true)
-      const success = await login(phone, '', { password })
+      const success = await login(phone.trim(), '', { password })
       setLoading(false)
 
       if (success) {
@@ -254,12 +269,22 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               <button
                 type="button"
                 onClick={() => {
-                  setLoginMethod('code')
-                  setPassword('')
-                  // 如果当前输入的不是有效的手机号，清空它
-                  if (phone && !PHONE_REGEX.test(phone)) {
+                  // 切换到验证码登录
+                  setPassword('') // 清空密码
+                  setCode('') // 清空验证码
+                  setCountdown(0) // 重置倒计时
+                  
+                  // 验证码登录只支持手机号
+                  // 如果当前输入的是有效的手机号，保留它
+                  // 如果输入的是用户名（不是手机号格式），清空它
+                  const isPhoneNumber = phone && PHONE_REGEX.test(phone.trim())
+                  if (!isPhoneNumber && phone) {
+                    // 输入的不是手机号，清空
                     setPhone('')
                   }
+                  // 如果输入的是手机号，保留（不需要操作）
+                  
+                  setLoginMethod('code')
                 }}
                 style={{
                   flex: 1,

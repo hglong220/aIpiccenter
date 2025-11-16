@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -205,16 +205,16 @@ model FileMetadata {
   pageCount         Int?
   wordCount         Int?
   language          String?  // 检测到的语言
-  extractedText     String?  // 提取的文本内容（SQLite自动使用TEXT类型）
+  extractedText     String?  // 提取的文本内容
   
   // 代码元数据
   programmingLanguage String?
   linesOfCode       Int?
-  fileStructure     String?  // JSON格式的文件结构（SQLite自动使用TEXT类型）
-  dependencies      String?  // JSON格式的依赖列表（SQLite自动使用TEXT类型）
+  fileStructure     String?  // JSON格式的文件结构
+  dependencies      String?  // JSON格式的依赖列表
   
   // 其他元数据（JSON格式存储）
-  extraMetadata     String?  // JSON格式（SQLite自动使用TEXT类型）
+  extraMetadata     String?  // JSON格式
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

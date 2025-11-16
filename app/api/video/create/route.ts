@@ -68,19 +68,11 @@ export async function POST(request: NextRequest) {
       taskType: 'video',
     }, 'normal')
 
-    // 保存任务到数据库
-    await prisma.aITask.create({
+    // 任务已在 router.routeTask 中创建，这里不需要重复创建
+    // 只需要更新预估时间
+    await prisma.aiTask.update({
+      where: { id: task.id },
       data: {
-        id: task.id,
-        userId: user.id,
-        taskType: 'video',
-        priority: task.priority,
-        status: task.status,
-        model: task.model,
-        fallbackModels: task.fallbackModels ? JSON.stringify(task.fallbackModels) : null,
-        requestData: JSON.stringify(body),
-        retryCount: task.retryCount,
-        maxRetries: task.maxRetries,
         estimatedTime: 120, // 视频生成预估2分钟
       },
     })

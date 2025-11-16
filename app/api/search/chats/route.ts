@@ -42,45 +42,47 @@ export async function GET(request: NextRequest) {
 
     await ensureFtsIndexed()
 
-    const likeQuery = `${query.replace(/['"]/g, '')}*`
+    // PostgreSQL: 使用ILIKE进行不区分大小写的搜索
+    const chatMessages = await prisma.chatMessage.findMany({
+      where: {
+        chat: {
+          userId: decoded.id,
+        },
+        content: {
+          contains: query,
+          mode: 'insensitive',
+        },
+      },
+      include: {
+        chat: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: MAX_RESULTS,
+    })
 
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{
-        chatId: string
-        messageId: string
-        content: string
-        snippet: string
-        createdAt: string
-        title: string | null
-      }>
-    >(
-      `
-      SELECT m.chatId,
-             m.id            AS messageId,
-             m.content       AS content,
-             snippet(chat_message_fts, 0, '<mark>', '</mark>', '...', 10) AS snippet,
-             s.title         AS title,
-             m.createdAt     AS createdAt
-      FROM chat_message_fts
-      JOIN ChatMessage m ON m.id = chat_message_fts.messageId
-      JOIN ChatSession s ON s.id = m.chatId
-      WHERE s.userId = ? AND chat_message_fts MATCH ?
-      ORDER BY m.createdAt DESC
-      LIMIT ?
-      `,
-      decoded.id,
-      likeQuery,
-      MAX_RESULTS
-    )
+    const results = chatMessages.map((m) => {
+      // 高亮搜索关键词
+      const highlight = m.content.replace(
+        new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+        '<mark>$1</mark>'
+      )
 
-    const results = rows.map((row) => ({
-      chatId: row.chatId,
-      messageId: row.messageId,
-      content: row.content,
-      highlight: row.snippet || row.content,
-      createdAt: new Date(row.createdAt).toISOString(),
-      title: row.title, // Add title to results
-    }))
+      return {
+        chatId: m.chatId,
+        messageId: m.id,
+        content: m.content,
+        highlight: highlight,
+        createdAt: m.createdAt.toISOString(),
+        title: m.chat.title,
+      }
+    })
 
     return NextResponse.json({
       success: true,
