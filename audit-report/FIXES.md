@@ -2,6 +2,22 @@
 
 ## 高优先级修复
 
+### 0. 修复xlsx安全漏洞 🔴 (紧急)
+
+**问题**: `xlsx@0.18.5` 存在高危漏洞，无法自动修复
+
+**修复方案**: 替换为 `exceljs`
+
+**步骤**:
+1. 卸载xlsx: `npm uninstall xlsx`
+2. 安装exceljs: `npm install exceljs`
+3. 更新代码: 修改 `lib/multimodal-parser.ts`
+4. 测试: 验证Excel解析功能
+
+**补丁文件**: `audit-report/patches/0001-fix-xlsx-vulnerability.patch`
+
+**优先级**: 🔴 **最高** (安全漏洞)
+
 ### 1. 数据库迁移到PostgreSQL
 
 **文件**: `prisma/schema.prisma`
