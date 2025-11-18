@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Shield, CheckCircle, XCircle, AlertTriangle, Filter, Search } from 'lucide-react'
@@ -29,15 +29,7 @@ export default function ModerationManagementPage() {
   const [filterPassed, setFilterPassed] = useState<string>('all')
   const [filterRiskLevel, setFilterRiskLevel] = useState<string>('all')
 
-  useEffect(() => {
-    if (!user || user.plan !== 'admin') {
-      router.push('/')
-      return
-    }
-    loadLogs()
-  }, [user, router, filterPassed, filterRiskLevel])
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -58,7 +50,15 @@ export default function ModerationManagementPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterPassed, filterRiskLevel])
+
+  useEffect(() => {
+    if (!user || user.plan !== 'admin') {
+      router.push('/')
+      return
+    }
+    void loadLogs()
+  }, [user, router, loadLogs])
 
   const getRiskLevelColor = (level: string) => {
     switch (level) {

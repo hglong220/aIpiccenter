@@ -1,5 +1,6 @@
 'use client'
 
+import NextImage from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -142,6 +143,98 @@ const staticViewConfigs: Record<string, StaticViewConfig> = {
     ],
     description: '帮助中心覆盖从基础使用到高级功能的全套指导，让你在任何阶段都能快速获得答案。',
     primaryCtaLabel: '访问帮助中心',
+  },
+}
+
+type AIToolPromptConfig = {
+  view: 'image' | 'video'
+  aspect?: AspectOption['id']
+  prompt: string
+  hint?: string
+}
+
+const aiToolPromptConfigs: Record<string, AIToolPromptConfig> = {
+  upscale: {
+    view: 'image',
+    aspect: 'square',
+    prompt:
+      '你是一名专业的图像超分与修复专家，请对用户上传的图片进行高清放大和画质增强：\n' +
+      '- 放大倍数：尽可能提升分辨率，但保持画面自然、不失真\n' +
+      '- 不新增任何元素，不改变主体、构图和风格\n' +
+      '- 去除噪点、锯齿、模糊，保留真实的纹理细节\n' +
+      '- 如果画面中有人脸或产品，优先保证其清晰度和质感\n' +
+      '- 输出为高分辨率 PNG，适合电商或精细展示场景。',
+    hint: '已为你准备“图片高清放大”的高质量提示词，请上传图片后点击生成。',
+  },
+  'ecommerce-poster': {
+    view: 'image',
+    aspect: 'portrait',
+    prompt:
+      '请为一个电商场景生成高转化率的促销海报图：\n' +
+      '- 主体：清晰突出单一主商品，背景干净简洁\n' +
+      '- 风格：现代、干净、高级，符合主流电商平台（如淘宝、京东）视觉规范\n' +
+      '- 文案元素：预留主标题、副标题、价格标签和行动按钮位置，但不要写具体文字\n' +
+      '- 画面层次：主体居中或偏视觉重心，光影自然，颜色对比明确\n' +
+      '- 请避免过度复杂的背景，不要偏离“电商促销海报”的主题。',
+    hint: '已为你准备电商海报的提示词，可在生成前在输入框中补充商品名称、价格等信息。',
+  },
+  'product-image': {
+    view: 'image',
+    aspect: 'square',
+    prompt:
+      '生成一张适合电商详情页或独立站展示的产品图：\n' +
+      '- 主体：单一产品，轮廓清晰，无遮挡\n' +
+      '- 背景：干净的纯色或轻微渐变背景，突出产品，不要复杂场景\n' +
+      '- 光影：柔和自然的打光，显示材质质感（如金属、玻璃、皮革等）\n' +
+      '- 风格：高端、真实、无夸张特效，符合苹果官网等精致产品图风格\n' +
+      '- 不添加文字和 Logo，避免出现多余装饰元素。',
+    hint: '已为你准备“产品图制作”的提示词，可在生成前补充产品类型和风格偏好。',
+  },
+  'interior-design': {
+    view: 'image',
+    aspect: 'landscape',
+    prompt:
+      '请生成一张室内空间效果图：\n' +
+      '- 场景：完整的室内空间（如客厅、卧室、书房等），构图自然\n' +
+      '- 风格：现代简约，色彩和谐，注重采光和材质细节\n' +
+      '- 画面元素：合理的家具布局、软装和灯光设计，不要堆砌物品\n' +
+      '- 重点体现空间的层次感和舒适度，可适当加入绿植与生活气息\n' +
+      '- 不使用夸张的梦幻效果，保持专业室内设计渲染风格。',
+    hint: '已为你准备“室内效果图”的提示词，可在生成前补充户型、风格（如北欧、原木）等要求。',
+  },
+  architecture: {
+    view: 'image',
+    aspect: 'landscape',
+    prompt:
+      '生成一张建筑外观效果图：\n' +
+      '- 主体：单个建筑或建筑群，视角自然（略微俯视或仰视均可）\n' +
+      '- 风格：现代建筑，线条清晰，玻璃、金属或石材质感真实\n' +
+      '- 环境：简洁的城市或自然背景，可有少量绿植或行人烘托比例\n' +
+      '- 光影：日间自然光，整体氛围干净专业，适合建筑方案展示\n' +
+      '- 不加入过多科幻或奇幻元素，保证可落地的建筑设计感。',
+    hint: '已为你准备“建筑效果图”的提示词，可在生成前补充建筑类型（办公楼、住宅等）与风格。',
+  },
+  'remove-background': {
+    view: 'image',
+    aspect: 'square',
+    prompt:
+      '请对用户上传的图片进行专业抠图和背景移除：\n' +
+      '- 精确识别主体轮廓，尤其是头发、边缘细节\n' +
+      '- 完全移除原有背景及多余杂物，不保留任何阴影或噪点\n' +
+      '- 输出透明背景 PNG，适合后续合成和电商主图使用\n' +
+      '- 不改变主体的结构、比例和颜色，不新增任何元素。',
+    hint: '已为你准备“背景移除”的提示词，请上传需要抠图的图片后再生成。',
+  },
+  'id-photo': {
+    view: 'image',
+    aspect: 'portrait',
+    prompt:
+      '请基于用户上传的人像生成一张标准证件照：\n' +
+      '- 尺寸：二寸证件照比例（约 35mm×49mm），画面为胸像\n' +
+      '- 背景：纯色背景（常见为蓝色或白色），干净无纹理\n' +
+      '- 姿态：正面直视镜头，五官端正，表情自然\n+      - 优化光线与肤色，但不要过度美颜或改变人物特征\n' +
+      '- 不添加任何文字、Logo 或边框。',
+    hint: '已为你准备“二寸证件照”的提示词，请上传清晰的人像照片后再生成。',
   },
 }
 
@@ -593,6 +686,8 @@ export default function GenerateLandingPage() {
   const [feedbackTypeDropdownOpen, setFeedbackTypeDropdownOpen] = useState(false)
   const [aiToolsSidebarOpen, setAiToolsSidebarOpen] = useState(false)
   const [selectedAITool, setSelectedAITool] = useState<AITool | null>(null)
+  const [tasksTab, setTasksTab] = useState<'my' | 'done' | 'archived'>('my')
+  const [messagesTab, setMessagesTab] = useState<'system' | 'team' | 'invite'>('system')
 
   // 格式化时间
   const formatTime = (dateString: string) => {
@@ -757,10 +852,10 @@ export default function GenerateLandingPage() {
     }
   }
 
-  const handleStartRename = (id: string, currentTitle: string) => {
+  const handleStartRename = useCallback((id: string, currentTitle: string) => {
     setEditingSearchId(id)
     setEditSearchTitle(currentTitle)
-  }
+  }, [])
 
 
   useEffect(() => {
@@ -810,15 +905,13 @@ export default function GenerateLandingPage() {
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>{config.title}</h1>
           <nav
-            style={
-              {
-                display: 'flex',
-                gap: '20px',
-                marginTop: '16px',
-                fontSize: '14px',
-                color: '#6b7280',
-              }
-            }
+            style={{
+              display: 'flex',
+              gap: '20px',
+              marginTop: '16px',
+              fontSize: '14px',
+              color: '#6b7280',
+            }}
           >
             {config.tabs.map((tab, index) => (
               <span
@@ -935,6 +1028,9 @@ export default function GenerateLandingPage() {
       )
     }
 
+    const currentTabLabel =
+      tasksTab === 'my' ? '我的任务' : tasksTab === 'done' ? '已完成任务' : '已归档任务'
+
     return (
       <div style={{ width: '100%', maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -949,9 +1045,54 @@ export default function GenerateLandingPage() {
                 color: '#6b7280',
               }}
             >
-              <span style={{ color: '#111827', fontWeight: 600, paddingBottom: '6px', borderBottom: '2px solid #111827' }}>我的任务</span>
-              <span>已完成</span>
-              <span>已归档</span>
+              <button
+                type="button"
+                onClick={() => setTasksTab('my')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: tasksTab === 'my' ? '#111827' : '#6b7280',
+                  fontWeight: tasksTab === 'my' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: tasksTab === 'my' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                我的任务
+              </button>
+              <button
+                type="button"
+                onClick={() => setTasksTab('done')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: tasksTab === 'done' ? '#111827' : '#6b7280',
+                  fontWeight: tasksTab === 'done' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: tasksTab === 'done' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                已完成
+              </button>
+              <button
+                type="button"
+                onClick={() => setTasksTab('archived')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: tasksTab === 'archived' ? '#111827' : '#6b7280',
+                  fontWeight: tasksTab === 'archived' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: tasksTab === 'archived' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                已归档
+              </button>
             </nav>
           </div>
           <button
@@ -987,7 +1128,9 @@ export default function GenerateLandingPage() {
             padding: '32px 36px 36px',
           }}
         >
-          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>我的任务</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '24px' }}>
+            {currentTabLabel}
+          </h2>
           <div
             style={{
               display: 'flex',
@@ -1009,10 +1152,17 @@ export default function GenerateLandingPage() {
               <Clock style={{ width: '24px', height: '24px', color: '#1A73E8', flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '15px', fontWeight: 600, color: '#111827', marginBottom: '4px' }}>
-                  任务管理功能
+                  {tasksTab === 'my' && '任务管理功能'}
+                  {tasksTab === 'done' && '已完成任务'}
+                  {tasksTab === 'archived' && '已归档任务'}
                 </div>
                 <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.6, margin: 0 }}>
-                  任务功能正在开发中。您可以在这里创建、管理和跟踪您的任务。
+                  {tasksTab === 'my' &&
+                    '任务功能正在开发中。您可以在这里创建、管理和跟踪运行中的生成任务和分析任务。'}
+                  {tasksTab === 'done' &&
+                    '这里将展示最近已完成的任务，方便你查看结果和再次运行。当前暂无任务记录。'}
+                  {tasksTab === 'archived' &&
+                    '这里将展示你手动归档或长期未使用的任务，方便你整理历史记录。当前暂无归档任务。'}
                 </p>
               </div>
             </div>
@@ -1278,6 +1428,111 @@ export default function GenerateLandingPage() {
               </p>
             </div>
           </div>
+        </section>
+      </div>
+    )
+  }
+
+  const renderMessagesView = () => {
+    const config = staticViewConfigs.messages
+
+    const currentSectionTitle =
+      messagesTab === 'system' ? '系统通知' : messagesTab === 'team' ? '团队提醒' : '协作邀请'
+
+    const emptyText =
+      messagesTab === 'system'
+        ? '当前没有新的系统通知。系统更新、套餐变更等信息会显示在这里。'
+        : messagesTab === 'team'
+          ? '当前没有新的团队提醒。团队成员的任务提醒和项目动态会显示在这里。'
+          : '当前没有新的协作邀请。有人邀请你加入项目或团队时，会显示在这里。'
+
+    return (
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '760px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '28px',
+        }}
+      >
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111827', margin: 0 }}>{config.title}</h1>
+            <nav
+              style={{
+                display: 'flex',
+                gap: '20px',
+                marginTop: '16px',
+                fontSize: '14px',
+                color: '#6b7280',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMessagesTab('system')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: messagesTab === 'system' ? '#111827' : '#6b7280',
+                  fontWeight: messagesTab === 'system' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: messagesTab === 'system' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                系统通知
+              </button>
+              <button
+                type="button"
+                onClick={() => setMessagesTab('team')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: messagesTab === 'team' ? '#111827' : '#6b7280',
+                  fontWeight: messagesTab === 'team' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: messagesTab === 'team' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                团队提醒
+              </button>
+              <button
+                type="button"
+                onClick={() => setMessagesTab('invite')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  color: messagesTab === 'invite' ? '#111827' : '#6b7280',
+                  fontWeight: messagesTab === 'invite' ? 600 : 400,
+                  paddingBottom: '6px',
+                  borderBottom: messagesTab === 'invite' ? '2px solid #111827' : '2px solid transparent',
+                }}
+              >
+                协作邀请
+              </button>
+            </nav>
+          </div>
+        </header>
+
+        <section
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.08)',
+            padding: '32px 36px 36px',
+          }}
+        >
+          <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, marginBottom: '16px' }}>
+            {currentSectionTitle}
+          </h2>
+          <p style={{ fontSize: '14px', color: '#4b5563', lineHeight: 1.7, margin: 0 }}>{emptyText}</p>
         </section>
       </div>
     )
@@ -2234,14 +2489,14 @@ export default function GenerateLandingPage() {
       setSearchQuery('')
       // 加载会话列表
       if (isChatView && user) {
-        loadChatSessions()
+        void loadChatSessions()
       }
       // 设置第一个会话为选中项
       if (chatSessions.length > 0) {
         setActiveSearchId(chatSessions[0].id)
       }
     }
-  }, [searchOverlayOpen, isChatView, user, chatSessions.length])
+  }, [searchOverlayOpen, isChatView, user, chatSessions, loadChatSessions])
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -2262,7 +2517,7 @@ export default function GenerateLandingPage() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [searchOverlayOpen, previewSearchItem])
+  }, [searchOverlayOpen, previewSearchItem, handleStartRename, handleDeleteChat])
 
   useEffect(() => {
     if (!navExpanded) {
@@ -2319,21 +2574,14 @@ export default function GenerateLandingPage() {
     }
   }
 
-  // 聊天消息发送处理函数
-  // 处理图片上传
+  // 处理参考文件上传（图片或其他文件），图片会作为参考图显示，其他文件作为附加上下文使用预留
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 验证文件类型
-    if (!file.type.startsWith('image/')) {
-      toast.error('请上传有效的图片文件')
-      return
-    }
-
-    // 验证文件大小 (10MB)
+    // 验证文件大小 (10MB) - 参考文件过大可能影响生成速度，这里先沿用原有限制
     if (file.size > 10 * 1024 * 1024) {
-      toast.error('图片大小不能超过10MB')
+      toast.error('文件大小不能超过10MB')
       return
     }
 
@@ -2354,8 +2602,14 @@ export default function GenerateLandingPage() {
 
       const data = await response.json()
       if (data.success && data.data) {
-        setReferenceImage(data.data.url)
-        toast.success('参考图片上传成功')
+        // 只有当文件是图片时，才作为参考图片在界面中显示
+        if (data.data.mimeType && data.data.mimeType.startsWith('image/')) {
+          setReferenceImage(data.data.url)
+          toast.success('参考图片上传成功')
+        } else {
+          // 非图片文件目前作为上下文预留（后端可根据需要读取），前端不展示缩略图以避免破坏布局
+          toast.success('参考文件上传成功')
+        }
       }
     } catch (error) {
       console.error('上传图片失败:', error)
@@ -2851,7 +3105,7 @@ export default function GenerateLandingPage() {
     } finally {
       setIsGeneratingImage(false)
     }
-  }, [isGeneratingImage, selectedAspect, loadChatSessions])
+  }, [isGeneratingImage, selectedAspect, loadChatSessions, referenceImage])
 
   // 图像生成处理函数（直接生成，不检查意图）
   const handleImageGenerationDirect = useCallback(async (userPrompt: string, userMessageId: string) => {
@@ -3381,14 +3635,11 @@ ${conversationContext || '(无)'}
                             aspectRatio: '1',
                           }}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
+                          <NextImage
                             src={imageSrc}
                             alt={`Generated image ${idx + 1}`}
+                            fill
                             style={{
-                              display: 'block',
-                              width: '100%',
-                              height: '100%',
                               objectFit: 'cover',
                             }}
                           />
@@ -3420,7 +3671,8 @@ ${conversationContext || '(无)'}
           <input
             ref={imageInputRef}
             type="file"
-            accept="image/*"
+            // 允许选择所有文件类型，具体支持范围由 /api/upload 决定
+            accept="*/*"
             onChange={handleImageUpload}
             style={{ display: 'none' }}
           />
@@ -3450,10 +3702,11 @@ ${conversationContext || '(无)'}
           </button>
           {referenceImage && (
             <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
-              <img
+              <NextImage
                 src={referenceImage}
                 alt="参考图片"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                fill
+                style={{ objectFit: 'cover' }}
               />
               <button
                 onClick={() => setReferenceImage(null)}
@@ -3745,27 +3998,26 @@ ${conversationContext || '(无)'}
                     marginTop: message.text ? '8px' : '0',
                   }}
                 >
-                  {message.images.map((imageSrc, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        border: '1px solid #e5e7eb',
-                        backgroundColor: '#f3f4f6',
-                        position: 'relative',
-                        aspectRatio: '1',
-                      }}
-                    >
-                      <img
-                        src={imageSrc}
-                        alt={`Generated image ${idx + 1}`}
+                    {message.images.map((imageSrc, idx) => (
+                      <div
+                        key={idx}
                         style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          border: '1px solid #e5e7eb',
+                          backgroundColor: '#f3f4f6',
+                          position: 'relative',
+                          aspectRatio: '1',
                         }}
-                      />
+                      >
+                        <NextImage
+                          src={imageSrc}
+                          alt={`Generated image ${idx + 1}`}
+                          fill
+                          style={{
+                            objectFit: 'cover',
+                          }}
+                        />
                       <div
                         style={{
                           position: 'absolute',
@@ -3854,10 +4106,11 @@ ${conversationContext || '(无)'}
           </button>
           {referenceImage && (
             <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
-              <img
+              <NextImage
                 src={referenceImage}
                 alt="参考图片"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                fill
+                style={{ objectFit: 'cover' }}
               />
               <button
                 onClick={() => setReferenceImage(null)}
@@ -5223,6 +5476,8 @@ ${conversationContext || '(无)'}
           renderFilesView()
         ) : view === 'feedback' ? (
           renderHelpView()
+        ) : view === 'messages' ? (
+          renderMessagesView()
         ) : view === 'subscription' ? (
           renderSubscriptionView()
         ) : isGeminiTest ? (
@@ -5284,10 +5539,11 @@ ${conversationContext || '(无)'}
                 </button>
                 {referenceImage && (
                   <div style={{ position: 'relative', width: '40px', height: '40px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #1A73E8' }}>
-                    <img
+                    <NextImage
                       src={referenceImage}
                       alt="参考图片"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      fill
+                      style={{ objectFit: 'cover' }}
                     />
                     <button
                       onClick={() => setReferenceImage(null)}
@@ -5577,8 +5833,34 @@ ${conversationContext || '(无)'}
       navExpanded={navExpanded}
       onToolSelect={(tool) => {
         setSelectedAITool(tool)
-        // TODO: 后续实现工具的具体使用逻辑
-        toast.success(`已选择工具：${tool.name}`)
+
+        const config = aiToolPromptConfigs[tool.id]
+        if (config) {
+          // 切换到合适的视图（目前所有预设均为图像视图）
+          const params = new URLSearchParams(searchParams.toString())
+          params.set('view', config.view)
+          router.push(`/generate?${params.toString()}`)
+
+          // 设置模型与宽高比
+          if (config.view === 'image') {
+            setSelectedModel('图片')
+            if (config.aspect) {
+              setSelectedAspect(config.aspect)
+            }
+          } else if (config.view === 'video') {
+            setSelectedModel('视频')
+          }
+
+          // 预填高质量提示词，用户可以在生成前微调
+          setPrompt(config.prompt)
+
+          toast.success(
+            config.hint ??
+              `已为你准备「${tool.name}」的高质量提示词，可在输入框中补充细节后点击生成。`,
+          )
+        } else {
+          toast.success(`已选择工具：${tool.name}，请在输入框中补充你的需求后生成。`)
+        }
       }}
     />
 
@@ -5816,17 +6098,40 @@ ${conversationContext || '(无)'}
             </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (!feedbackType || !feedbackContent.trim()) {
                   toast.error('请选择反馈类型并填写反馈内容')
                   return
                 }
-                // TODO: 发送反馈到后端
-                toast.success('反馈已发送')
-                setFeedbackModalOpen(false)
-                setFeedbackTypeDropdownOpen(false)
-                setFeedbackType('')
-                setFeedbackContent('')
+
+                try {
+                  const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      type: feedbackType,
+                      content: feedbackContent,
+                      page: `generate?view=${view}`,
+                    }),
+                  })
+
+                  const data = await response.json()
+                  if (!response.ok || !data.success) {
+                    toast.error(data.error || '反馈提交失败，请稍后再试')
+                    return
+                  }
+
+                  toast.success('反馈已发送，感谢你的意见！')
+                  setFeedbackModalOpen(false)
+                  setFeedbackTypeDropdownOpen(false)
+                  setFeedbackType('')
+                  setFeedbackContent('')
+                } catch (error) {
+                  console.error('反馈提交失败:', error)
+                  toast.error('反馈提交失败，请检查网络后重试')
+                }
               }}
               style={{
                 padding: '8px 16px',

@@ -20,17 +20,28 @@ export function EnterpriseInquiry() {
     setIsSubmitting(true)
 
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      
-      toast.success('询价提交成功！我们会尽快与您联系。')
-      setFormData({
-        companyName: '',
-        contactName: '',
-        email: '',
-        phone: '',
-        requirements: '',
+      const response = await fetch('/api/enterprise-inquiry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        toast.error(data.error || '提交询价失败，请稍后重试。')
+      } else {
+        toast.success('询价提交成功！我们会尽快与您联系。')
+        setFormData({
+          companyName: '',
+          contactName: '',
+          email: '',
+          phone: '',
+          requirements: '',
+        })
+      }
     } catch (error) {
       toast.error('提交询价失败，请重试。')
       console.error('Error submitting inquiry:', error)

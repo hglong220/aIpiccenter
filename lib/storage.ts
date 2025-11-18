@@ -118,9 +118,7 @@ export class S3StorageProvider extends StorageProvider {
     this.config = config
     // 动态导入AWS SDK（如果可用）
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3')
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getSignedUrl } = require('@aws-sdk/s3-request-presigner')
       
       this.s3Client = new S3Client({

@@ -27,7 +27,8 @@ model User {
   files               File[]
   aiTasks             AITask[]
   projects            Project[]
-  moderationLogs       ModerationLog[]
+  moderationLogs      ModerationLog[]
+  feedbacks           Feedback[]
 
   @@index([username])
 }
@@ -362,5 +363,23 @@ model ModerationLog {
   @@index([contentType])
   @@index([riskLevel])
   @@index([action])
+  @@index([createdAt])
+
+  feedbacks Feedback[]
+}
+
+// 用户反馈表
+model Feedback {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // 反馈类型，如：一般意见、问题/漏洞、儿童安全等
+  content     String   // 反馈内容
+  page        String?  // 提交反馈所在的页面或视图
+  metadata    String?  // 其他上下文信息（JSON）
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
   @@index([createdAt])
 }

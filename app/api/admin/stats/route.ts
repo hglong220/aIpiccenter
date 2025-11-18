@@ -55,10 +55,10 @@ export async function GET(request: NextRequest) {
           createdAt: { gte: today },
         },
       }),
-      prisma.aiTask.count({
+      prisma.aITask.count({
         where: { status: 'running' },
       }),
-      prisma.aiTask.count({
+      prisma.aITask.count({
         where: { status: 'pending' },
       }),
       prisma.moderationLog.count(),

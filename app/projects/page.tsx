@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -279,10 +280,11 @@ export default function ProjectsPage() {
                 <Link href={`/projects/${project.id}`}>
                   <div className="aspect-video bg-gray-200 relative group cursor-pointer">
                     {project.coverImage ? (
-                      <img
+                      <Image
                         src={project.coverImage}
                         alt={project.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        style={{ objectFit: 'cover' }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

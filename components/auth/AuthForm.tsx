@@ -48,6 +48,9 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
         setLoginMethod('password')
       }
     }
+    // 这里我们只希望在 mode 改变时重置 loginMethod，
+    // 如果将 loginMethod 加入依赖，会在 setLoginMethod 后再次触发该 effect，导致不必要的重复执行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
   const currentCodeType: 'register' | 'login' | 'reset' = mode === 'register' ? 'register' : mode === 'forgot-password' ? 'reset' : 'login'
@@ -186,6 +189,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
     if (success) {
       toast.success('密码已重置，请使用新密码登录')
       setMode('login')
+      setPhone('') // 清空手机号
+      setUsername('') // 清空用户名
       setCode('')
       setPassword('')
       setConfirmPassword('')
@@ -207,6 +212,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
 
   const handleModeSwitch = (newMode: AuthMode) => {
     setMode(newMode)
+    setPhone('') // 清空手机号
+    setUsername('') // 清空用户名
     setCode('')
     setPassword('')
     setConfirmPassword('')
@@ -246,9 +253,12 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               <button
                 type="button"
                 onClick={() => {
+                  // 切换到密码登录
                   setLoginMethod('password')
-                  setCode('')
-                  setCountdown(0)
+                  setCode('') // 清空验证码
+                  setCountdown(0) // 重置倒计时
+                  // 清空手机号，因为密码登录可以使用用户名或手机号，不应该保留之前验证码登录时的手机号
+                  setPhone('')
                 }}
                 style={{
                   flex: 1,
@@ -273,16 +283,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
                   setPassword('') // 清空密码
                   setCode('') // 清空验证码
                   setCountdown(0) // 重置倒计时
-                  
-                  // 验证码登录只支持手机号
-                  // 如果当前输入的是有效的手机号，保留它
-                  // 如果输入的是用户名（不是手机号格式），清空它
-                  const isPhoneNumber = phone && PHONE_REGEX.test(phone.trim())
-                  if (!isPhoneNumber && phone) {
-                    // 输入的不是手机号，清空
-                    setPhone('')
-                  }
-                  // 如果输入的是手机号，保留（不需要操作）
+                  // 切换登录方式时，总是清空手机号字段，避免混淆
+                  setPhone('')
                   
                   setLoginMethod('code')
                 }}
@@ -432,6 +434,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               type="button"
               onClick={() => {
                 setMode('forgot-password')
+                setPhone('') // 清空手机号
+                setUsername('') // 清空用户名
                 setCode('')
                 setPassword('')
                 setConfirmPassword('')
@@ -446,6 +450,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               type="button"
               onClick={() => {
                 setMode('register')
+                setPhone('') // 清空手机号
+                setUsername('') // 清空用户名
                 setCode('')
                 setPassword('')
                 setConfirmPassword('')
@@ -465,6 +471,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               type="button"
               onClick={() => {
                 setMode('login')
+                setPhone('') // 清空手机号
+                setUsername('') // 清空用户名
                 setPassword('')
                 setConfirmPassword('')
                 setCountdown(0)
@@ -483,6 +491,8 @@ export function AuthForm({ initialMode = 'login', redirect = '/', onSuccess, isE
               type="button"
               onClick={() => {
                 setMode('login')
+                setPhone('') // 清空手机号
+                setUsername('') // 清空用户名
                 setCode('')
                 setPassword('')
                 setConfirmPassword('')

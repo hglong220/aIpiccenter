@@ -17,17 +17,22 @@ import { ModelRecommender, getAPIKeyManager, TaskChainExecutor } from './ai-sche
 // 任务类型
 export type TaskType = 'text' | 'image' | 'video' | 'audio' | 'document' | 'code' | 'composite'
 
-// 模型类型
-export type ModelType = 
-  | 'gpt-4' 
-  | 'gpt-3.5' 
-  | 'gemini-pro' 
+// 模型类型（逻辑模型名，实际调用由各适配器实现）
+export type ModelType =
+  | 'gpt-4'
+  | 'gpt-3.5'
+  | 'gemini-pro'
   | 'gemini-flash'
+  | 'claude'          // Anthropic Claude
+  | 'qwen'            // 通义千问（Qwen）
   | 'stable-diffusion'
   | 'flux'
+  | 'midjourney'      // Midjourney（通过代理/API网关）
+  | 'wanxiang'        // 通义万相
   | 'runway'
   | 'pika'
   | 'kling'
+  | 'sora'            // OpenAI Sora（预留）
   | 'whisper'
   | 'ocr'
 
@@ -83,7 +88,7 @@ class ModelManager {
   }
 
   private initializeModels(): void {
-    // GPT模型
+    // GPT系列模型
     this.models.set('gpt-4', {
       type: 'gpt-4',
       name: 'GPT-4',
@@ -102,6 +107,17 @@ class ModelManager {
       apiKeys: this.getApiKeys('OPENAI_API_KEY'),
       currentKeyIndex: 0,
       fallback: ['gemini-flash'],
+    })
+
+    // Claude（Anthropic）
+    this.models.set('claude', {
+      type: 'claude',
+      name: 'Claude',
+      supportedTasks: ['text', 'document', 'code'],
+      enabled: !!process.env.CLAUDE_API_KEY,
+      apiKeys: this.getApiKeys('CLAUDE_API_KEY'),
+      currentKeyIndex: 0,
+      fallback: ['gpt-4', 'gemini-pro', 'qwen'],
     })
 
     // Gemini模型
@@ -124,7 +140,18 @@ class ModelManager {
       currentKeyIndex: 0,
     })
 
-    // 图像生成模型
+    // 通义千问（Qwen）
+    this.models.set('qwen', {
+      type: 'qwen',
+      name: 'Qwen (通义千问)',
+      supportedTasks: ['text', 'document', 'code'],
+      enabled: !!process.env.QWEN_API_KEY,
+      apiKeys: this.getApiKeys('QWEN_API_KEY'),
+      currentKeyIndex: 0,
+      fallback: ['gpt-3.5', 'gemini-flash'],
+    })
+
+    // 图像生成模型 - Stable Diffusion / Flux / Midjourney / 通义万相
     this.models.set('stable-diffusion', {
       type: 'stable-diffusion',
       name: 'Stable Diffusion',
@@ -144,7 +171,27 @@ class ModelManager {
       currentKeyIndex: 0,
     })
 
-    // 视频生成模型
+    this.models.set('midjourney', {
+      type: 'midjourney',
+      name: 'Midjourney',
+      supportedTasks: ['image'],
+      enabled: !!process.env.MIDJOURNEY_API_KEY,
+      apiKeys: this.getApiKeys('MIDJOURNEY_API_KEY'),
+      currentKeyIndex: 0,
+      fallback: ['stable-diffusion', 'wanxiang', 'flux'],
+    })
+
+    this.models.set('wanxiang', {
+      type: 'wanxiang',
+      name: '通义万相',
+      supportedTasks: ['image'],
+      enabled: !!process.env.WANXIANG_API_KEY,
+      apiKeys: this.getApiKeys('WANXIANG_API_KEY'),
+      currentKeyIndex: 0,
+      fallback: ['stable-diffusion', 'flux'],
+    })
+
+    // 视频生成模型 - Runway / Pika / Kling / Sora
     this.models.set('runway', {
       type: 'runway',
       name: 'Runway',
@@ -172,6 +219,17 @@ class ModelManager {
       enabled: !!process.env.KLING_API_KEY,
       apiKeys: this.getApiKeys('KLING_API_KEY'),
       currentKeyIndex: 0,
+      fallback: ['runway', 'pika'],
+    })
+
+    this.models.set('sora', {
+      type: 'sora',
+      name: 'Sora',
+      supportedTasks: ['video'],
+      enabled: !!process.env.SORA_API_KEY,
+      apiKeys: this.getApiKeys('SORA_API_KEY'),
+      currentKeyIndex: 0,
+      fallback: ['runway', 'kling', 'pika'],
     })
 
     // 音频模型

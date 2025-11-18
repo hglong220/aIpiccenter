@@ -1,7 +1,14 @@
 'use client'
 
-import { AuthForm } from '@/components/auth/AuthForm'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function ForgotPasswordPage() {
-  return <AuthForm initialMode="forgot-password" redirect="/" />
+  const router = useRouter()
+
+  useEffect(() => {
+    router.replace('/login')
+  }, [router])
+
+  return null
 }

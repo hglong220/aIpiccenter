@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -44,15 +45,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'files' | 'generations'>('files')
 
-  useEffect(() => {
-    if (!user) {
-      router.push('/login')
-      return
-    }
-    loadProject()
-  }, [user, router, projectId])
-
-  const loadProject = async () => {
+  const loadProject = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/projects/${projectId}`)
@@ -69,7 +62,15 @@ export default function ProjectDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId, router])
+
+  useEffect(() => {
+    if (!user) {
+      router.push('/login')
+      return
+    }
+    void loadProject()
+  }, [user, router, loadProject])
 
   if (loading) {
     return (
@@ -191,11 +192,14 @@ export default function ProjectDetailPage() {
                         className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                       >
                         {file.fileType === 'image' ? (
-                          <img
-                            src={file.url}
-                            alt={file.originalFilename}
-                            className="w-full aspect-square object-cover"
-                          />
+                          <div className="w-full aspect-square relative">
+                            <Image
+                              src={file.url}
+                              alt={file.originalFilename}
+                              fill
+                              style={{ objectFit: 'cover' }}
+                            />
+                          </div>
                         ) : (
                           <div className="w-full aspect-square bg-gray-100 flex items-center justify-center">
                             <FileText className="w-12 h-12 text-gray-400" />
@@ -234,11 +238,14 @@ export default function ProjectDetailPage() {
                         className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
                       >
                         {gen.type === 'image' && gen.imageUrl ? (
-                          <img
-                            src={gen.imageUrl}
-                            alt={gen.prompt}
-                            className="w-full aspect-square object-cover"
-                          />
+                          <div className="w-full aspect-square relative">
+                            <Image
+                              src={gen.imageUrl}
+                              alt={gen.prompt}
+                              fill
+                              style={{ objectFit: 'cover' }}
+                            />
+                          </div>
                         ) : gen.type === 'video' && gen.videoUrl ? (
                           <div className="w-full aspect-square bg-gray-100 flex items-center justify-center relative">
                             <Video className="w-12 h-12 text-gray-400" />

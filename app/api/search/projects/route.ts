@@ -46,8 +46,8 @@ export async function GET(request: NextRequest) {
       where: {
         userId: decoded.id,
         OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { description: { contains: query, mode: 'insensitive' } },
+          { name: { contains: query } },
+          { description: { contains: query } },
         ],
       },
       include: {

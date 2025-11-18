@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
         },
         content: {
           contains: query,
-          mode: 'insensitive',
         },
       },
       include: {

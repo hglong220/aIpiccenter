@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 获取任务列表
-    const tasks = await prisma.aiTask.findMany({
+    const tasks = await prisma.aITask.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 100, // 限制返回数量

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTokenFromCookies, verifyToken } from '@/lib/auth'
 import type { ApiResponse, User } from '@/types'
+import { getCached, CacheKeys } from '@/lib/cache'
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,9 +30,16 @@ export async function GET(request: NextRequest) {
       }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-    })
+    // 使用缓存获取用户信息（缓存5分钟）
+    const user = await getCached(
+      CacheKeys.user(decoded.id),
+      async () => {
+        return await prisma.user.findUnique({
+          where: { id: decoded.id },
+        })
+      },
+      300 // 5分钟缓存
+    )
 
     if (!user) {
       return NextResponse.json<ApiResponse<User>>({

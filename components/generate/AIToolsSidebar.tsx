@@ -1,6 +1,6 @@
 'use client'
 
-import { Image, ShoppingBag, Package, Home, Building2, Scissors, Camera, Video } from 'lucide-react'
+import { Image as ImageIcon, ShoppingBag, Package, Home, Building2, Scissors, Camera, Video } from 'lucide-react'
 
 export interface AITool {
   id: string
@@ -17,7 +17,7 @@ const aiTools: AITool[] = [
     id: 'upscale',
     name: '图片高清放大',
     displayName: '放大',
-    icon: <Image size={20} strokeWidth={1} />,
+    icon: <ImageIcon size={20} strokeWidth={1} />,
     description: '将图片放大并提升清晰度',
     requiresImage: true,
     category: 'enhancement',
@@ -64,7 +64,7 @@ const aiTools: AITool[] = [
     displayName: '移除',
     icon: <Scissors size={20} strokeWidth={1} />,
     description: '智能移除图片背景',
-    requiresImage: false,
+    requiresImage: true,
     category: 'enhancement',
   },
   {
@@ -73,7 +73,7 @@ const aiTools: AITool[] = [
     displayName: '证照',
     icon: <Camera size={20} strokeWidth={1} />,
     description: '生成标准二寸证件照',
-    requiresImage: false,
+    requiresImage: true,
     category: 'photo',
   },
   {

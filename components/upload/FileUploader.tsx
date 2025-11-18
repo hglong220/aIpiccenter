@@ -71,7 +71,7 @@ export default function FileUploader({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  const validateFile = (file: File): string | null => {
+  const validateFile = useCallback((file: File): string | null => {
     if (maxSize && file.size > maxSize) {
       return `文件大小超过限制 (${formatFileSize(maxSize)})`
     }
@@ -81,7 +81,7 @@ export default function FileUploader({
     }
 
     return null
-  }
+  }, [maxSize, acceptedTypes])
 
   const uploadFileSimple = async (file: File): Promise<FileUploadResult> => {
     const formData = new FormData()
@@ -101,7 +101,7 @@ export default function FileUploader({
     return result.data
   }
 
-  const uploadFileChunked = async (file: File, fileId: string): Promise<FileUploadResult> => {
+  const uploadFileChunked = useCallback(async (file: File, fileId: string): Promise<FileUploadResult> => {
     // 计算MD5（简化版，实际应该使用Web Crypto API）
     const buffer = await file.arrayBuffer()
     const chunks = Math.ceil(file.size / chunkSize)
@@ -192,9 +192,9 @@ export default function FileUploader({
       size: file.size,
       status: 'processing',
     }
-  }
+  }, [chunkSize])
 
-  const handleFileUpload = async (file: File, fileId: string) => {
+  const handleFileUpload = useCallback(async (file: File, fileId: string) => {
     try {
       setUploadingFiles(prev =>
         prev.map(f =>
@@ -236,7 +236,7 @@ export default function FileUploader({
       onUploadError?.(errorMessage)
       toast.error(`文件 "${file.name}" 上传失败: ${errorMessage}`)
     }
-  }
+  }, [onUploadComplete, onUploadError, chunkSize, uploadFileChunked])
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -264,9 +264,9 @@ export default function FileUploader({
 
     // 开始上传
     newFiles.forEach(({ id, file }) => {
-      handleFileUpload(file, id)
+      void handleFileUpload(file, id)
     })
-  }, [maxFiles, maxSize, acceptedTypes, chunkSize, onUploadComplete, onUploadError])
+  }, [maxFiles, handleFileUpload, validateFile])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()

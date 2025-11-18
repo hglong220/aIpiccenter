@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { RefreshCw, Filter, Search, Play, Pause, X } from 'lucide-react'
@@ -31,18 +31,9 @@ export default function TasksManagementPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
-  useEffect(() => {
-    if (!user || user.plan !== 'admin') {
-      router.push('/')
-      return
-    }
-    loadTasks()
-    const interval = setInterval(loadTasks, 5000) // 每5秒刷新
-    return () => clearInterval(interval)
-  }, [user, router, filterStatus])
-
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     try {
+      setLoading(true)
       const response = await fetch(`/api/admin/tasks?status=${filterStatus}`)
       const data = await response.json()
       if (data.success) {
@@ -53,7 +44,19 @@ export default function TasksManagementPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterStatus])
+
+  useEffect(() => {
+    if (!user || user.plan !== 'admin') {
+      router.push('/')
+      return
+    }
+    void loadTasks()
+    const interval = setInterval(() => {
+      void loadTasks()
+    }, 5000) // 每5秒刷新
+    return () => clearInterval(interval)
+  }, [user, router, loadTasks])
 
   const handleCancelTask = async (taskId: string) => {
     try {

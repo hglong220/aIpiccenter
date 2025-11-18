@@ -62,7 +62,7 @@ export interface TaskChain {
   }>
 }
 
-// 模型成本配置
+// 模型成本配置（估算，用于相对比较，不是精确计费）
 const MODEL_COSTS: Record<ModelType, ModelCost> = {
   'gpt-4': {
     inputTokens: 0.03,
@@ -73,6 +73,12 @@ const MODEL_COSTS: Record<ModelType, ModelCost> = {
   'gpt-3.5': {
     inputTokens: 0.0015,
     outputTokens: 0.002,
+    image: 0,
+    video: 0,
+  },
+  'claude': {
+    inputTokens: 0.03,
+    outputTokens: 0.06,
     image: 0,
     video: 0,
   },
@@ -88,6 +94,12 @@ const MODEL_COSTS: Record<ModelType, ModelCost> = {
     image: 0.01,
     video: 0,
   },
+  'qwen': {
+    inputTokens: 0.0008,
+    outputTokens: 0.001,
+    image: 0,
+    video: 0,
+  },
   'stable-diffusion': {
     inputTokens: 0,
     outputTokens: 0,
@@ -98,6 +110,18 @@ const MODEL_COSTS: Record<ModelType, ModelCost> = {
     inputTokens: 0,
     outputTokens: 0,
     image: 0.003,
+    video: 0,
+  },
+  'midjourney': {
+    inputTokens: 0,
+    outputTokens: 0,
+    image: 0.04,
+    video: 0,
+  },
+  'wanxiang': {
+    inputTokens: 0,
+    outputTokens: 0,
+    image: 0.015,
     video: 0,
   },
   'runway': {
@@ -118,6 +142,12 @@ const MODEL_COSTS: Record<ModelType, ModelCost> = {
     image: 0,
     video: 0.03,
   },
+  'sora': {
+    inputTokens: 0,
+    outputTokens: 0,
+    image: 0,
+    video: 0.12,
+  },
   'whisper': {
     inputTokens: 0.006,
     outputTokens: 0,
@@ -132,17 +162,22 @@ const MODEL_COSTS: Record<ModelType, ModelCost> = {
   },
 }
 
-// 模型性能配置
+// 模型性能配置（1-10，主观评分：速度 / 质量 / 可靠性）
 const MODEL_PERFORMANCE: Record<ModelType, ModelPerformance> = {
   'gpt-4': { speed: 6, quality: 10, reliability: 9 },
   'gpt-3.5': { speed: 8, quality: 7, reliability: 9 },
+  'claude': { speed: 7, quality: 10, reliability: 9 },
   'gemini-pro': { speed: 7, quality: 9, reliability: 8 },
   'gemini-flash': { speed: 9, quality: 8, reliability: 8 },
+  'qwen': { speed: 8, quality: 8, reliability: 8 },
   'stable-diffusion': { speed: 5, quality: 7, reliability: 7 },
   'flux': { speed: 6, quality: 9, reliability: 7 },
+  'midjourney': { speed: 6, quality: 10, reliability: 8 },
+  'wanxiang': { speed: 7, quality: 9, reliability: 8 },
   'runway': { speed: 4, quality: 9, reliability: 6 },
   'pika': { speed: 5, quality: 8, reliability: 6 },
   'kling': { speed: 5, quality: 8, reliability: 7 },
+  'sora': { speed: 4, quality: 10, reliability: 7 },
   'whisper': { speed: 8, quality: 9, reliability: 9 },
   'ocr': { speed: 7, quality: 7, reliability: 8 },
 }

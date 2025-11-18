@@ -23,7 +23,7 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     // 刷新用户信息以更新信用点
     refreshUser()
-  }, [])
+  }, [refreshUser])
 
   return (
     <div style={{ minHeight: 'calc(100vh - 200px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>

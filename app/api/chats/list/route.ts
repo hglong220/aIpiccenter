@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTokenFromCookies, verifyToken } from '@/lib/auth'
+import { getCached, CacheKeys, deleteCache } from '@/lib/cache'
 
 /**
  * 获取用户的聊天会话列表
@@ -18,28 +19,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '无效的token' }, { status: 401 })
     }
 
-    // 获取用户的会话列表，按更新时间倒序
-    const sessions = await prisma.chatSession.findMany({
-      where: {
-        userId: decoded.id,
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      include: {
-        messages: {
+    // 使用缓存获取用户的会话列表（缓存5分钟）
+    const sessions = await getCached(
+      CacheKeys.chatSession(`list:${decoded.id}`),
+      async () => {
+        return await prisma.chatSession.findMany({
+          where: {
+            userId: decoded.id,
+          },
           orderBy: {
-            createdAt: 'desc',
+            updatedAt: 'desc',
           },
-          take: 1, // 只获取最后一条消息用于预览
-        },
-        _count: {
-          select: {
-            messages: true,
+          include: {
+            messages: {
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: 1, // 只获取最后一条消息用于预览
+            },
+            _count: {
+              select: {
+                messages: true,
+              },
+            },
           },
-        },
+        })
       },
-    })
+      300 // 5分钟缓存
+    )
 
     // 格式化返回数据
     const formattedSessions = sessions.map((session) => ({

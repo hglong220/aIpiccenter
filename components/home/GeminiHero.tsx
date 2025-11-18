@@ -63,6 +63,8 @@ export function GeminiHero() {
               }}
             >
               <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4" />
+              {/* 这里的 <img> 是 <video> 的兜底内容，不适合用 next/image，因此精准豁免 no-img-element 规则 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="https://picsum.photos/1920/1080?random=hero-video"
                 alt="AI 产品演示"

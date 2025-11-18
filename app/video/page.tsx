@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Play, Download, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
@@ -107,10 +108,11 @@ export default function VideoHistoryPage() {
               >
                 {video.thumbnailUrl ? (
                   <div className="relative aspect-video bg-gray-200">
-                    <img
+                    <Image
                       src={video.thumbnailUrl}
                       alt={video.prompt}
-                      className="w-full h-full object-cover"
+                      fill
+                      style={{ objectFit: 'cover' }}
                     />
                     {video.status === 'success' && video.videoUrl && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all">

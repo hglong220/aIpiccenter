@@ -33,7 +33,7 @@ export async function POST(
     }
 
     // 获取任务
-    const task = await prisma.aiTask.findUnique({
+    const task = await prisma.aITask.findUnique({
       where: { id: params.taskId },
     })
 
@@ -49,7 +49,7 @@ export async function POST(
     }
 
     // 更新任务状态
-    await prisma.aiTask.update({
+    await prisma.aITask.update({
       where: { id: params.taskId },
       data: {
         status: 'failed',

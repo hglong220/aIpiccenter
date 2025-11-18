@@ -16,12 +16,17 @@ npm install
 
 ### Environment Variables
 
-Create a `.env.local` file:
-
-```env
-NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
+- 复制 `env.template` 为 `.env.local`，按注释填写实际值。
+- 最基本需要配置：
+  - `GOOGLE_GEMINI_API_KEY`（文本/聊天）
+  - `NEXT_PUBLIC_GEMINI_API_KEY`（前端使用，可与上面相同）
+  - `NEXT_PUBLIC_APP_URL`（网站地址）
+- 可选扩展模型（调度器会自动识别）包括：
+  - `CLAUDE_API_KEY`（Anthropic Claude）
+  - `QWEN_API_KEY`（通义千问）
+  - `MIDJOURNEY_API_KEY`（Midjourney 网关）
+  - `WANXIANG_API_KEY`（通义万相）
+  - `RUNWAY_API_KEY` / `PIKA_API_KEY` / `KLING_API_KEY` / `SORA_API_KEY`（视频生成）
 
 ### Development
 

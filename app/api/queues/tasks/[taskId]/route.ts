@@ -17,7 +17,7 @@ export async function GET(
     const { taskId } = params
 
     // Get task from database
-    const task = await prisma.aiTask.findUnique({
+    const task = await prisma.aITask.findUnique({
       where: { id: taskId },
       select: {
         id: true,

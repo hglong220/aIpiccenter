@@ -55,7 +55,8 @@ export async function GET(
         files: project.files.map((pf) => ({
           id: pf.file.id,
           originalFilename: pf.file.originalFilename,
-          url: pf.file.url,
+          // 优先使用可公开访问的URL，其次使用存储URL或存储路径
+          url: pf.file.previewUrl || pf.file.storageUrl || pf.file.storagePath,
           fileType: pf.file.fileType,
         })),
         generations: project.generations.map((pg) => ({

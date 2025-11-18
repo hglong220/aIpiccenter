@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import { useState, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -421,9 +422,11 @@ export default function ImageEditorPage() {
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
                     </div>
                   )}
-                  <img
+                  <Image
                     src={imageUrl}
                     alt="编辑中"
+                    width={1200}
+                    height={800}
                     className="max-w-full h-auto rounded-lg"
                   />
                   {activeTool === 'crop' && (

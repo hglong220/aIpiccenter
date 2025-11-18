@@ -5,6 +5,7 @@
 
 'use client'
 
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ArrowLeft, Share2, Copy, Check } from 'lucide-react'
@@ -27,11 +28,7 @@ export default function SharedProjectPage() {
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    loadSharedProject()
-  }, [shareToken])
-
-  const loadSharedProject = async () => {
+  const loadSharedProject = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/projects/shared/${shareToken}`)
@@ -47,7 +44,11 @@ export default function SharedProjectPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [shareToken])
+
+  useEffect(() => {
+    void loadSharedProject()
+  }, [loadSharedProject])
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href)
@@ -114,11 +115,14 @@ export default function SharedProjectPage() {
           {project.files.map((file) => (
             <div key={file.id} className="bg-white rounded-lg shadow overflow-hidden">
               {file.fileType === 'image' ? (
-                <img
-                  src={file.url}
-                  alt={file.originalFilename}
-                  className="w-full aspect-square object-cover"
-                />
+                <div className="w-full aspect-square relative">
+                  <Image
+                    src={file.url}
+                    alt={file.originalFilename}
+                    fill
+                    style={{ objectFit: 'cover' }}
+                  />
+                </div>
               ) : (
                 <div className="w-full aspect-square bg-gray-100 flex items-center justify-center">
                   <span className="text-gray-400">文件</span>
@@ -132,11 +136,14 @@ export default function SharedProjectPage() {
           {project.generations.map((gen) => (
             <div key={gen.id} className="bg-white rounded-lg shadow overflow-hidden">
               {gen.type === 'image' && gen.imageUrl ? (
-                <img
-                  src={gen.imageUrl}
-                  alt={gen.prompt}
-                  className="w-full aspect-square object-cover"
-                />
+                <div className="w-full aspect-square relative">
+                  <Image
+                    src={gen.imageUrl}
+                    alt={gen.prompt}
+                    fill
+                    style={{ objectFit: 'cover' }}
+                  />
+                </div>
               ) : gen.type === 'video' && gen.videoUrl ? (
                 <video
                   src={gen.videoUrl}

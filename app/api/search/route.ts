@@ -65,14 +65,13 @@ export async function GET(request: NextRequest) {
           userId: decoded.id,
           status: 'ready',
           OR: [
-            { originalFilename: { contains: query, mode: 'insensitive' } },
-            { filename: { contains: query, mode: 'insensitive' } },
+            { originalFilename: { contains: query } },
+            { filename: { contains: query } },
             // 搜索文件元数据中的提取文本
             {
               metadata: {
                 extractedText: {
                   contains: query,
-                  mode: 'insensitive',
                 },
               },
             },
@@ -103,8 +102,8 @@ export async function GET(request: NextRequest) {
         where: {
           userId: decoded.id,
           OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
+            { name: { contains: query } },
+            { description: { contains: query } },
           ],
         },
         include: {
@@ -179,7 +178,6 @@ export async function GET(request: NextRequest) {
             },
             content: {
               contains: query,
-              mode: 'insensitive',
             },
           },
           include: {

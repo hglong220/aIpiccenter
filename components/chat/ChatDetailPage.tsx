@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
 import { Loader2, Copy, Check, Edit2, RotateCcw, MoreVertical, Image as ImageIcon, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -369,19 +370,25 @@ export default function ChatDetailPage({
                         {message.images && message.images.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
                             {message.images.map((img, idx) => (
-                              <img
+                              <div
                                 key={idx}
-                                src={img}
-                                alt={`上传的图片 ${idx + 1}`}
                                 style={{
-                                  maxWidth: '200px',
-                                  maxHeight: '200px',
+                                  position: 'relative',
+                                  width: '200px',
+                                  height: '200px',
                                   borderRadius: '8px',
-                                  objectFit: 'cover',
+                                  overflow: 'hidden',
                                   cursor: 'pointer',
                                 }}
                                 onClick={() => window.open(img, '_blank')}
-                              />
+                              >
+                                <Image
+                                  src={img}
+                                  alt={`上传的图片 ${idx + 1}`}
+                                  fill
+                                  style={{ objectFit: 'cover' }}
+                                />
+                              </div>
                             ))}
                           </div>
                         )}
@@ -525,12 +532,11 @@ export default function ChatDetailPage({
                 }}
               >
                 {file.mimeType.startsWith('image/') ? (
-                  <img
+                  <Image
                     src={file.url}
                     alt={`预览 ${idx + 1}`}
+                    fill
                     style={{
-                      width: '100%',
-                      height: '100%',
                       objectFit: 'cover',
                     }}
                   />
@@ -571,7 +577,8 @@ export default function ChatDetailPage({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx"
+            // 允许选择所有文件类型，具体支持范围由后端 /api/upload 决定
+            accept="*/*"
             multiple
             onChange={handleFileSelect}
             style={{ display: 'none' }}

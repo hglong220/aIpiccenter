@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 
 const trendingCases = [
@@ -112,17 +113,16 @@ export function TrendingNow() {
                 e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.15)'
               }}
               >
-                <img
+                <Image
                   src={case_.image}
                   alt={case_.title}
+                  fill
                   style={{ 
-                    width: '100%', 
-                    height: '100%', 
                     objectFit: 'cover',
                     display: 'block'
                   }}
                   onError={(e) => {
-                    const target = e.target as HTMLImageElement
+                    const target = e.currentTarget
                     target.src = `https://via.placeholder.com/1200x1200/1A73E8/FFFFFF?text=${encodeURIComponent(case_.title)}`
                   }}
                 />
