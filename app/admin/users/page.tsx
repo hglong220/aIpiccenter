@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { AdminLayout } from '@/components/admin/AdminLayout'
+import { CreditsDialog } from '@/components/admin/CreditsDialog'
 import {
   Search,
   Plus,
@@ -25,6 +27,7 @@ interface User {
   phone: string
   email: string | null
   credits: number
+  creditsUsed?: number
   plan: string
   planExpiresAt: string | null
   createdAt: string
@@ -37,6 +40,7 @@ export default function UsersManagementPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterPlan, setFilterPlan] = useState<string>('all')
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
 
   useEffect(() => {
     if (!user || user.plan !== 'admin') {
@@ -52,7 +56,7 @@ export default function UsersManagementPage() {
       const response = await fetch('/api/admin/users')
       const data = await response.json()
       if (data.success) {
-        setUsers(data.data)
+        setUsers(data.data.users || [])
       }
     } catch (error) {
       console.error('Failed to load users:', error)
@@ -73,7 +77,7 @@ export default function UsersManagementPage() {
       const data = await response.json()
       if (data.success) {
         toast.success('积分更新成功')
-        loadUsers()
+        await loadUsers()
       } else {
         toast.error(data.error || '更新失败')
       }
@@ -113,15 +117,17 @@ export default function UsersManagementPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
+      <AdminLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        </div>
+      </AdminLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <AdminLayout>
+      <div className="p-8">
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">用户管理</h1>
@@ -174,7 +180,10 @@ export default function UsersManagementPage() {
                   用户信息
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  积分
+                  积分余额
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  已使用
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   订阅计划
@@ -203,19 +212,24 @@ export default function UsersManagementPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-900">{user.credits}</span>
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">{user.credits.toLocaleString()}</div>
+                        <div className="text-xs text-gray-500">当前余额</div>
+                      </div>
                       <button
-                        onClick={() => {
-                          const newCredits = prompt('输入新积分:', user.credits.toString())
-                          if (newCredits) {
-                            handleEditCredits(user.id, parseInt(newCredits))
-                          }
-                        }}
-                        className="text-blue-600 hover:text-blue-800"
+                        onClick={() => setSelectedUser(user)}
+                        className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"
+                        title="管理积分"
                       >
-                        <Edit className="w-4 h-4" />
+                        <CreditCard className="w-4 h-4" />
                       </button>
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {user.creditsUsed !== undefined ? user.creditsUsed.toLocaleString() : '-'}
+                    </div>
+                    <div className="text-xs text-gray-500">累计使用</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
@@ -249,7 +263,14 @@ export default function UsersManagementPage() {
           </table>
         </div>
       </div>
-    </div>
+      {selectedUser && (
+        <CreditsDialog
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+          onSave={handleEditCredits}
+        />
+      )}
+    </AdminLayout>
   )
 }
 

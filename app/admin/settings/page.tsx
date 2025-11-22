@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { AdminLayout } from '@/components/admin/AdminLayout'
 import { Save, Globe, Shield, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -68,15 +69,17 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      </div>
+      <AdminLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        </div>
+      </AdminLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <AdminLayout>
+      <div className="p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">系统设置</h1>
           <p className="mt-2 text-gray-600">配置系统参数和模型切换</p>
@@ -188,7 +191,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </div>
+    </AdminLayout>
   )
 }
 

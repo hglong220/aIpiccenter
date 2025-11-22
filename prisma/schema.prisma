@@ -427,3 +427,49 @@ model ProjectShare {
   @@unique([projectId, sharedWithId])
   @@index([sharedWithId])
 }
+
+// AI API 管理系统
+model AIProvider {
+  id          String    @id @default(cuid())
+  name        String    @unique // gemini, claude, gpt, midjourney等
+  type        String    // chat, image, video
+  displayName String    // 显示名称
+  description String?   // 描述
+  enabled     Boolean   @default(true)
+  config      String?   // JSON配置
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  apiKeys     APIKey[]
+
+  @@index([type])
+  @@index([enabled])
+}
+
+model APIKey {
+  id                   String     @id @default(cuid())
+  providerId           String
+  provider             AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name                 String     // 密钥名称/标识
+  apiKey               String     // 加密的API密钥
+  endpoint             String?    // API端点
+  enabled              Boolean    @default(true)
+  priority             Int        @default(50) // 优先级 1-100
+  weight               Int        @default(1) // 权重，用于负载均衡
+  maxRequestsPerMinute Int?       // 速率限制
+  currentUsage         Int        @default(0) // 当前分钟使用次数
+  totalRequests        Int        @default(0) // 总请求数
+  successfulRequests   Int        @default(0) // 成功请求数
+  failedRequests       Int        @default(0) // 失败请求数
+  lastUsedAt           DateTime?  // 最后使用时间
+  lastErrorAt          DateTime?  // 最后错误时间
+  lastResetAt          DateTime   @default(now()) // 上次重置时间
+  status               String     @default("active") // active, rate_limited, error, disabled
+  metadata             String?    // JSON元数据
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@index([providerId])
+  @@index([enabled])
+  @@index([status])
+  @@index([priority])
+}

@@ -36,12 +36,12 @@ export async function GET(request: NextRequest) {
     const plan = searchParams.get('plan') || ''
     const sortBy = searchParams.get('sortBy') || 'createdAt'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
-    
+
     const skip = (page - 1) * limit
-    
+
     // 构建查询条件
     const where: any = {}
-    
+
     if (search) {
       where.OR = [
         { username: { contains: search, mode: 'insensitive' } },
@@ -49,14 +49,14 @@ export async function GET(request: NextRequest) {
         { email: { contains: search, mode: 'insensitive' } },
       ]
     }
-    
+
     if (plan) {
       where.plan = plan
     }
-    
+
     // 获取总数
     const total = await prisma.user.count({ where })
-    
+
     // 获取用户列表（带分页）
     const users = await prisma.user.findMany({
       where,
@@ -81,11 +81,26 @@ export async function GET(request: NextRequest) {
       skip,
       take: limit,
     })
-    
+
+    // 计算每个用户的积分使用量
+    const usersWithStats = await Promise.all(
+      users.map(async (user) => {
+        const totalCreditsUsed = await prisma.generation.aggregate({
+          where: { userId: user.id },
+          _sum: { creditsUsed: true },
+        })
+
+        return {
+          ...user,
+          creditsUsed: totalCreditsUsed._sum.creditsUsed || 0,
+        }
+      })
+    )
+
     return NextResponse.json({
       success: true,
       data: {
-        users,
+        users: usersWithStats,
         pagination: {
           page,
           limit,

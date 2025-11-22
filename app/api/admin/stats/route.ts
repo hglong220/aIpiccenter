@@ -32,21 +32,41 @@ export async function GET(request: NextRequest) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
     const [
       totalUsers,
       newUsersToday,
+      newUsersYesterday,
       totalOrders,
       ordersToday,
+      paidOrders,
+      totalRevenue,
+      revenueToday,
+      revenueYesterday,
       runningTasks,
       pendingTasks,
+      failedTasksToday,
+      totalGenerations,
+      generationsToday,
+      successfulGenerations,
       totalModerationLogs,
       passedModeration,
       rejectedModeration,
+      pendingModeration,
+      totalFiles,
+      filesSize,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({
         where: {
           createdAt: { gte: today },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          createdAt: { gte: yesterday, lt: today },
         },
       }),
       prisma.order.count(),
@@ -55,11 +75,45 @@ export async function GET(request: NextRequest) {
           createdAt: { gte: today },
         },
       }),
+      prisma.order.count({
+        where: { paymentStatus: 'paid' },
+      }),
+      prisma.order.aggregate({
+        where: { paymentStatus: 'paid' },
+        _sum: { amount: true },
+      }),
+      prisma.order.aggregate({
+        where: {
+          paymentStatus: 'paid',
+          paidAt: { gte: today },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.order.aggregate({
+        where: {
+          paymentStatus: 'paid',
+          paidAt: { gte: yesterday, lt: today },
+        },
+        _sum: { amount: true },
+      }),
       prisma.aITask.count({
         where: { status: 'running' },
       }),
       prisma.aITask.count({
         where: { status: 'pending' },
+      }),
+      prisma.aITask.count({
+        where: {
+          status: 'failed',
+          createdAt: { gte: today },
+        },
+      }),
+      prisma.generation.count(),
+      prisma.generation.count({
+        where: { createdAt: { gte: today } },
+      }),
+      prisma.generation.count({
+        where: { status: 'success' },
       }),
       prisma.moderationLog.count(),
       prisma.moderationLog.count({
@@ -68,20 +122,63 @@ export async function GET(request: NextRequest) {
       prisma.moderationLog.count({
         where: { passed: false },
       }),
+      prisma.moderationLog.count({
+        where: { action: 'review' },
+      }),
+      prisma.file.count(),
+      prisma.file.aggregate({
+        _sum: { size: true },
+      }),
     ])
+
+    // 计算趋势
+    const userTrend = newUsersYesterday > 0
+      ? ((newUsersToday - newUsersYesterday) / newUsersYesterday) * 100
+      : newUsersToday > 0 ? 100 : 0
+
+    const revenueTrend = (revenueYesterday._sum.amount || 0) > 0
+      ? (((revenueToday._sum.amount || 0) - (revenueYesterday._sum.amount || 0)) / (revenueYesterday._sum.amount || 0)) * 100
+      : (revenueToday._sum.amount || 0) > 0 ? 100 : 0
 
     return NextResponse.json({
       success: true,
       data: {
-        totalUsers,
-        newUsersToday,
-        totalOrders,
-        ordersToday,
-        runningTasks,
-        pendingTasks,
-        moderationLogs: totalModerationLogs,
-        passedModeration,
-        rejectedModeration,
+        users: {
+          total: totalUsers,
+          today: newUsersToday,
+          trend: Math.round(userTrend * 10) / 10,
+        },
+        orders: {
+          total: totalOrders,
+          today: ordersToday,
+          paid: paidOrders,
+        },
+        revenue: {
+          total: totalRevenue._sum.amount || 0,
+          today: revenueToday._sum.amount || 0,
+          trend: Math.round(revenueTrend * 10) / 10,
+        },
+        tasks: {
+          running: runningTasks,
+          pending: pendingTasks,
+          failedToday: failedTasksToday,
+        },
+        generations: {
+          total: totalGenerations,
+          today: generationsToday,
+          successful: successfulGenerations,
+          successRate: totalGenerations > 0 ? Math.round((successfulGenerations / totalGenerations) * 100) : 0,
+        },
+        moderation: {
+          total: totalModerationLogs,
+          passed: passedModeration,
+          rejected: rejectedModeration,
+          pending: pendingModeration,
+        },
+        files: {
+          total: totalFiles,
+          totalSize: filesSize._sum.size || 0,
+        },
       },
     })
   } catch (error) {

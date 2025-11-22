@@ -8,37 +8,36 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { AccessDenied } from '@/components/admin/AccessDenied'
+import { AdminLayout } from '@/components/admin/AdminLayout'
+import { StatsCard } from '@/components/admin/StatsCard'
 import {
   Users,
-  ShoppingCart,
+  DollarSign,
   Zap,
-  FileText,
-  Shield,
-  Folder,
-  Activity,
-  Settings,
+  Image,
   TrendingUp,
-  Clock,
-  CheckCircle,
-  XCircle,
+  AlertCircle,
 } from 'lucide-react'
-import Link from 'next/link'
 
 export default function AdminDashboard() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // 检查管理员权限
-    if (!user || user.plan !== 'admin') {
-      router.push('/')
+    // 未登录，重定向到管理员登录页面
+    if (!authLoading && !user) {
+      router.push('/admin/login')
       return
     }
 
-    loadStats()
-  }, [user, router])
+    // 已登录但不是管理员，不做跳转（显示 AccessDenied 组件）
+    if (!authLoading && user && user.plan === 'admin') {
+      loadStats()
+    }
+  }, [user, authLoading, router])
 
   const loadStats = async () => {
     try {
@@ -54,7 +53,8 @@ export default function AdminDashboard() {
     }
   }
 
-  if (loading) {
+  // 显示加载状态
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -62,155 +62,125 @@ export default function AdminDashboard() {
     )
   }
 
-  const menuItems = [
-    {
-      title: '用户管理',
-      description: '管理用户账号、积分、订阅计划',
-      icon: Users,
-      href: '/admin/users',
-      color: 'bg-blue-500',
-    },
-    {
-      title: '订单管理',
-      description: '查看和管理所有订单',
-      icon: ShoppingCart,
-      href: '/admin/orders',
-      color: 'bg-green-500',
-    },
-    {
-      title: '生成任务',
-      description: '监控和管理AI生成任务',
-      icon: Zap,
-      href: '/admin/tasks',
-      color: 'bg-yellow-500',
-    },
-    {
-      title: 'AI调度记录',
-      description: '查看模型使用和调度记录',
-      icon: Activity,
-      href: '/admin/scheduler',
-      color: 'bg-purple-500',
-    },
-    {
-      title: '内容审核',
-      description: '查看和管理内容审核记录',
-      icon: Shield,
-      href: '/admin/moderation',
-      color: 'bg-red-500',
-    },
-    {
-      title: '文件管理',
-      description: '管理用户上传的文件',
-      icon: Folder,
-      href: '/admin/files',
-      color: 'bg-indigo-500',
-    },
-    {
-      title: '系统日志',
-      description: '查看系统运行日志',
-      icon: FileText,
-      href: '/admin/logs',
-      color: 'bg-gray-500',
-    },
-    {
-      title: '系统设置',
-      description: '模型切换、系统配置',
-      icon: Settings,
-      href: '/admin/settings',
-      color: 'bg-teal-500',
-    },
-  ]
+  // 已登录但不是管理员，显示权限不足页面
+  if (user && user.plan !== 'admin') {
+    return <AccessDenied />
+  }
+
+  // 未登录会在 useEffect 中重定向，这里返回 null
+  if (!user) {
+    return null
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AdminLayout>
+      <div className="p-8">
+        {/* 页面标题 */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">后台管理系统</h1>
-          <p className="mt-2 text-gray-600">系统概览和管理功能</p>
+          <h1 className="text-5xl font-bold text-gray-900 text-center" style={{ position: 'relative', top: '10px' }}>总控制台</h1>
+          <p className="mt-2 text-gray-600">系统概览和关键指标</p>
         </div>
 
         {/* 统计卡片 */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">总用户数</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
-                </div>
-                <Users className="w-8 h-8 text-blue-500" />
-              </div>
-              <div className="mt-4 flex items-center text-sm">
-                <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                <span className="text-green-500">+{stats.newUsersToday} 今日新增</span>
-              </div>
-            </div>
+            <StatsCard
+              title="总用户数"
+              value={stats.users.total.toLocaleString()}
+              icon={Users}
+              color="blue"
+              trend={{
+                value: stats.users.trend,
+                label: `今日新增 ${stats.users.today}`,
+                isPositive: stats.users.trend >= 0,
+              }}
+            />
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">总订单数</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
-                </div>
-                <ShoppingCart className="w-8 h-8 text-green-500" />
-              </div>
-              <div className="mt-4 flex items-center text-sm">
-                <span className="text-gray-600">今日订单: {stats.ordersToday}</span>
-              </div>
-            </div>
+            <StatsCard
+              title="总收入"
+              value={`¥${(stats.revenue.total / 100).toLocaleString()}`}
+              icon={DollarSign}
+              color="green"
+              trend={{
+                value: stats.revenue.trend,
+                label: `今日 ¥${(stats.revenue.today / 100).toLocaleString()}`,
+                isPositive: stats.revenue.trend >= 0,
+              }}
+            />
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">运行中任务</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.runningTasks}</p>
-                </div>
-                <Clock className="w-8 h-8 text-yellow-500" />
-              </div>
-              <div className="mt-4 flex items-center text-sm">
-                <span className="text-gray-600">等待中: {stats.pendingTasks}</span>
-              </div>
-            </div>
+            <StatsCard
+              title="运行中任务"
+              value={stats.tasks.running}
+              icon={Zap}
+              color="yellow"
+              subtitle={`等待中: ${stats.tasks.pending} | 今日失败: ${stats.tasks.failedToday}`}
+            />
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">审核记录</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.moderationLogs}</p>
-                </div>
-                <Shield className="w-8 h-8 text-red-500" />
-              </div>
-              <div className="mt-4 flex items-center text-sm">
-                <CheckCircle className="w-4 h-4 text-green-500 mr-1" />
-                <span className="text-green-500">通过: {stats.passedModeration}</span>
-                <XCircle className="w-4 h-4 text-red-500 ml-4 mr-1" />
-                <span className="text-red-500">拒绝: {stats.rejectedModeration}</span>
+            <StatsCard
+              title="生成记录"
+              value={stats.generations.total.toLocaleString()}
+              icon={Image}
+              color="purple"
+              subtitle={`成功率: ${stats.generations.successRate}% | 今日: ${stats.generations.today}`}
+            />
+          </div>
+        )}
+
+        {/* 快捷操作 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <QuickActionCard
+            title="用户管理"
+            description="管理用户账号和权限"
+            href="/admin/users"
+            icon="👥"
+          />
+          <QuickActionCard
+            title="订单管理"
+            description="查看和处理订单"
+            href="/admin/orders"
+            icon="🛒"
+          />
+          <QuickActionCard
+            title="内容审核"
+            description="审核用户生成内容"
+            href="/admin/moderation"
+            icon="🛡️"
+          />
+        </div>
+
+        {/* 系统告警 */}
+        {stats && stats.tasks.failedToday > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+              <div>
+                <h3 className="font-semibold text-red-900">系统告警</h3>
+                <p className="text-sm text-red-700">
+                  今日有 {stats.tasks.failedToday} 个任务失败，请及时处理
+                </p>
               </div>
             </div>
           </div>
         )}
-
-        {/* 功能菜单 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {menuItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6 group"
-              >
-                <div className={`${item.color} w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-600">{item.description}</p>
-              </Link>
-            )
-          })}
-        </div>
       </div>
-    </div>
+    </AdminLayout>
   )
 }
 
+function QuickActionCard({ title, description, href, icon }: {
+  title: string
+  description: string
+  href: string
+  icon: string
+}) {
+  return (
+    <a
+      href={href}
+      className="block bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
+    >
+      <div className="text-4xl mb-3">{icon}</div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+      <p className="text-sm text-gray-600">{description}</p>
+    </a>
+  )
+}
